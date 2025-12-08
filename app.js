@@ -30,8 +30,8 @@ const FRIENDLY_NAMES = {
         "imperial": " inch",
         "metric_short": " mm",
         "imperial_short": " inch",
-        "colors": ["white", "blue"],
-        "color_limits": [0, 99]
+        "colors": ["white", "#DDDDff", "blue"],
+        "color_limits": [0, 80, 99]
     },
     "snowfall_sum": {
         "name": "Snow",
@@ -53,8 +53,8 @@ const FRIENDLY_NAMES = {
         "imperial": " mph",
         "metric_short": " km/h",
         "imperial_short": " mph",
-        "colors": ["blue", "lightgreen", "red"],
-        "color_limits": [0, 50, 100],
+        "colors": ["white", "#DDDDff",  "blue", "lightgreen", "red"],
+        "color_limits": [0, 25, 50, 75, 100],
     }, 
     "sunshine_duration": {
         "name": "Sunshine",
@@ -80,13 +80,18 @@ const SYMBOLS_RAW = ["#", "B", "S", "A"];
 // zip colors and symbols
 const SYMBOLS = SYMBOLS_RAW.map((x, i) => `<a href='###'><font title='%%%' color='${COLORS[i]}'>${x}</font></a>`);
 const COLUMN_WIDTH = 3;
+const DEFAULT_DELTA = 5;
+const DEFAULT_YEARS_TO_GET_HISTORY = 24;
 var SELF_LINK = null;
 
 
 var LINEAR_SCALE = true;
 
-window.onload = function() {
-    // catch exceptions
+async function start() {
+    isWidget = false;
+    if (window.location.pathname.endsWith("widget.html")) {
+        isWidget = true;
+    }
     document.getElementById("date").value = new Date().toISOString().slice(0, 10);
     // parse GET parameters
     const urlParams = new URLSearchParams(window.location.search);
@@ -116,7 +121,7 @@ window.onload = function() {
 
     if (((!latitude || !longitude)  && !location) && navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(function(position) {
-            console.log(position);
+            console.log("Using current location coordinates:", position.coords.latitude, position.coords.longitude);
             document.getElementById("latitude").value = position.coords.latitude.toFixed(2);
             document.getElementById("longitude").value = position.coords.longitude.toFixed(2);
             document.getElementById("location").value = "Current location";
@@ -184,7 +189,6 @@ async function getWeather(){
     var dateString = document.getElementById("date").value;
     // parse YYYY-MM-DD to Date object
     var date = new Date(dateString);
-    console.log(dateString, date);
     if (date == null || isNaN(date.getTime())) {
         date = new Date();
         dateString = date.toISOString().slice(0, 10);
@@ -214,9 +218,12 @@ async function getWeather(){
         url.searchParams.set('location', document.getElementById("location").value);
     }
     url.searchParams.set('date', dateString);
-    url.searchParams.set('delta', delta);
-    url.searchParams.set('years_to_get_history', years_to_get_history);
-    url.searchParams.set('units', units);
+    if (delta)
+        url.searchParams.set('delta', delta);
+    if (years_to_get_history)
+        url.searchParams.set('years_to_get_history', years_to_get_history);
+    if (units)
+        url.searchParams.set('units', units);
     window.history.pushState({}, '', url);
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -235,7 +242,6 @@ async function getWeather(){
     // set delta_ends at midnight
     delta_ends.setHours(0, 0, 0, 0);
 
-    console.log(date, delta_starts, delta_ends);
     if (date >= delta_ends) {
         // too far in the future
         document.getElementById('summary').innerHTML = "Date too far in the future";
@@ -273,7 +279,14 @@ async function getWeather(){
 
     for (const info of [["Selected day",1], ["Days before",0], ["Days after",2]]) {
 
-        response["results"][info[0]] = current[info[1]];
+
+        response["results"][info[0]] = JSON.parse(JSON.stringify(current[info[1]]["daily"]));
+            for (var i = 0; i < response["results"][info[0]]["sunshine_duration"].length; i++) {
+                var correctionFactor = calculateDaylightCorrectionFactor(new Date(current[info[1]]["daily"]["time"][i])) * 3600;
+                response["results"][info[0]]["sunshine_duration"][i] /= correctionFactor;
+            }
+            response["results"][info[0]]["percentiles"] = {};
+
         if (current[info[1]]["daily"]["time"].length == 0) {
             continue;
         }
@@ -298,10 +311,13 @@ async function getWeather(){
             }
             const datas = friendlyStats(historical_grouped[varName], historical_grouped["time"], current[info[1]]["daily"][varName], current[info[1]]["daily"]["time"], varName, units, delta);
             if (datas.length == 0) {
+                delete response["results"][info[0]][varName];
                 continue;
             }
             text += "<li>" + datas[0] + "</li>\n";
+            response["results"][info[0]]["percentiles"][varName] = [];
             for (var i = 0; i < datas[1].length; i++) {
+                response["results"][info[0]]["percentiles"][varName].push((datas[5][i]).toFixed(2));
                 if (datas[1][i] > score[i] && varName != "sunshine_duration" && varName != "wind_speed_10m_max") {
                     score[i] = datas[1][i];
                     scoreSum[i] = datas[2][i];
@@ -313,6 +329,8 @@ async function getWeather(){
         for (var i = 0; i < score.length; i++) {
             score[i] = score[i] / scoreSum[i] * 100;
         }
+
+        response["results"][info[0]]["weirdther_score"] = score;
 
         const sorted = score.slice().sort((a, b) => a - b);
         const max = Math.max(...score) / 100;
@@ -347,6 +365,12 @@ async function getWeather(){
 
     if (isApiCall) {
         document.write('<pre>' + JSON.stringify(response, null, 2) + '</pre>');
+    }
+    
+    // Export data for widget
+    if (isWidget) {
+        console.log("Exporting data for widget");
+        window.widgetData = response;
     }
 }
 
@@ -468,6 +492,7 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     var scores = [];
     var scoresSum = [];
     var percentiles = [];
+    var percentilesRaw = [];
     var decimalPlaces = 1;
 
 
@@ -477,6 +502,7 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
         series_percentile[0] += percentileData[0];
         series_percentile[1] += percentileData[1];
         series_percentile[2] += percentileData[2];
+        percentilesRaw.push(percentileData[0]);
         const diff = Math.abs(percentileData[0] - 0.5);
         percentiles.push(diff+0.5);
         score = diff;
@@ -552,7 +578,7 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
 
 
     //return [`<b>${friendly_name}:</b> ${boldStart}${series_min_max}${FRIENDLY_NAMES[var_name][unit_type]} is ${qualifier} ${topOrBottom} Historic median/mean ${median.toFixed(1)}/${mean.toFixed(1)}${FRIENDLY_NAMES[var_name][unit_type]} ${boldEnd}`, scores, scoresSum, gradient];
-    return [`<b>${friendly_name}:</b> ${boldStart}${series_min_max}${FRIENDLY_NAMES[var_name][unit_type]} is ${qualifier} ${topOrBottom} ${boldEnd}`, scores, scoresSum, gradient, percentiles];
+    return [`<b>${friendly_name}:</b> ${boldStart}${series_min_max}${FRIENDLY_NAMES[var_name][unit_type]} is ${qualifier} ${topOrBottom} ${boldEnd}`, scores, scoresSum, gradient, percentiles, percentilesRaw];
  
 }
 
@@ -596,7 +622,7 @@ async function getCurrentWeather(location = DEFAULT_LOCATION, unitsType = "metri
     return data;
 }
 
-function splitPastPresentFuture(data, current_date, delta) {
+function splitPastPresentFuture(data, current_date, delta = DEFAULT_DELTA) {
     var daily = [{"daily": {}}, {"daily": {}}, {"daily": {}}];
     var vars = ("time," + VARS_TO_GET_DAILY).split(",");
     var today = current_date.toISOString().split('T')[0];
@@ -1059,9 +1085,8 @@ function generateSpan(current_series, current_series_days, historical_stats, his
         url.searchParams.set('date', date);
         percentileData = findPercentileForSpan(data_for_median,  val);
         position = percentileData[0] * 100;
-        let part1 = genBackground( val.toFixed(1))
         let part2 = genBackground((stdDevsToShow[i]*100).toFixed(0) + "%")
-        textTop += `<span style="position: absolute; left: ${position}%; top: 0px; transform: translateX(-50%);"><a title="${date}" href="${url}">` + part1 + "</a></span>";
+        textTop += `<span style="position: absolute; left: ${position}%; top: 0px; transform: translateX(-50%);"><a title="${date}" href="${url}">`  + "</a></span>";
         textTopTop += `<span style="position: absolute; left: ${position}%; top: -10px; transform: translateX(-50%);">`+ part2 + "</span>";
         if (symbols[i] !== "") {
             points += `<span style="position: absolute; left: ${position}%; top: -5px; transform: translateX(-50%);">${symbols[i]}</span>`;
