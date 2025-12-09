@@ -32,12 +32,46 @@
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
         }
 
+        @media (max-width: 768px) {
+            .widget-container {
+                padding: 20px;
+                border-radius: 16px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .widget-container {
+                padding: 16px;
+            }
+        }
+
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 32px;
             gap: 24px;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .weirdther-today {
+                width: 100%;
+            }
+            
+            .current-weather {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .location-info {
+                width: 100%;
+                text-align: center !important;
+            }
         }
 
         .location-info {
@@ -54,7 +88,7 @@
             background: rgba(255, 255, 255, 0.08);
             border: 1px solid rgba(255, 255, 255, 0.15);
             border-radius: 8px;
-            padding-bottom: 6px;
+            padding: 6px 12px;
             color: white;
             font-size: 32px;
             font-weight: 300;
@@ -91,10 +125,10 @@
         }
 
         .selected-day {
-            font-size: 20px;
-            opacity: 0.95;
-            margin-bottom: 6px;
-            font-weight: 600;
+            font-size: 14px;
+            opacity: 0.7;
+            margin-bottom: 4px;
+            font-weight: 500;
         }
 
         .current-weather {
@@ -108,17 +142,10 @@
             font-size: 64px;
         }
 
-        .temp-range-max {
-            font-size: 40px;
-            font-weight: 600;
+        .temp-range {
+            font-size: 18px;
+            font-weight: 400;
             opacity: 0.8;
-        }
-
-        .temp-range-min {
-            font-size: 32px;
-            font-weight: 300;
-            opacity: 0.6;
-            margin-left: 8px;
         }
 
         .weirdther-today {
@@ -147,7 +174,7 @@
             display: flex;
             gap: 16px;
             margin-top: 8px;
-            font-size: 20px;
+            font-size: 13px;
             opacity: 0.8;
         }
 
@@ -170,9 +197,32 @@
         }
 
         .forecast-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            display: flex;
             gap: 16px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding-bottom: 16px;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+
+        .forecast-grid::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .forecast-grid::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        .forecast-grid::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+
+        .forecast-grid::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
         }
 
         .forecast-card {
@@ -183,6 +233,18 @@
             cursor: pointer;
             position: relative;
             overflow: hidden;
+            min-width: 180px;
+            max-width: 200px;
+            flex-shrink: 0;
+            scroll-snap-align: start;
+        }
+
+        @media (max-width: 480px) {
+            .forecast-card {
+                min-width: 150px;
+                max-width: 170px;
+                padding: 16px;
+            }
         }
 
         .forecast-card:hover {
@@ -324,6 +386,64 @@
             padding: 40px;
             font-size: 18px;
         }
+
+        @media (max-width: 768px) {
+            .temp-range {
+                font-size: 16px;
+            }
+            
+            .weather-icon {
+                font-size: 56px;
+            }
+            
+            .weirdther-today-value {
+                font-size: 48px;
+            }
+            
+            .current-metrics {
+                font-size: 18px;
+            }
+            
+            .selected-day {
+                font-size: 18px;
+            }
+            
+            .location-input {
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .temp-range {
+                font-size: 14px;
+            }
+            
+            .weather-icon {
+                font-size: 48px;
+            }
+            
+            .weirdther-today-value {
+                font-size: 42px;
+            }
+            
+            .current-metrics {
+                font-size: 16px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .location-input {
+                font-size: 24px;
+            }
+            
+            .selected-day {
+                font-size: 16px;
+            }
+            
+            .section-title {
+                font-size: 12px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -338,8 +458,7 @@
                 <div class="current-weather">
                     <div class="weather-icon" id="weatherIcon">🌤️</div>
                     <div>
-                        <span class="temp-range-max" id="currentRangeMax">--</span>
-                        <span class="temp-range-min" id="currentRangeMin">--</span>
+                        <div class="temp-range" id="currentRange">-- / --</div>
                         <div class="current-metrics" id="currentMetrics"></div>
                     </div>
                 </div>
@@ -610,8 +729,7 @@
             document.getElementById('condition').textContent = getConditionFromData(rain, snow, sunshine);
             
             // Update temperature range
-            document.getElementById('currentRangeMax').textContent = `${Math.round(tempMax)}°`;
-            document.getElementById('currentRangeMin').textContent = `${Math.round(tempMin)}°`;
+            document.getElementById('currentRange').textContent = `${Math.round(tempMax)}° / ${Math.round(tempMin)}°`;
             
             // Update weirdther score
             const weirdtherElement = document.getElementById('currentWeirdther');
