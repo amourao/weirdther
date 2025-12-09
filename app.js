@@ -536,7 +536,7 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     var noteDays = "";
     var percentilePretty = `${(series_percentile[0]*100).toFixed(0)}%`;
     if (series_mean === 0 && var_name === "rain_sum" && series_percentile[0] > 0.25 && series_percentile[0] < 0.75) {
-        return [`<b>${friendly_name}:</b> No rain expected, which is what is typical.`, scores, scoresSum, gradient, percentiles];
+        return [`<b>${friendly_name}:</b> No rain expected, which is what is typical.`, scores, scoresSum, gradient, percentiles, percentilesRaw];
     } else if (series_percentile[1] == 0 && series_percentile[2] == -1) {
         // return [`<b>${friendly_name}:</b> Not expected this time of year.`, scores, scoresSum, gradient];
         return []
@@ -1085,8 +1085,9 @@ function generateSpan(current_series, current_series_days, historical_stats, his
         url.searchParams.set('date', date);
         percentileData = findPercentileForSpan(data_for_median,  val);
         position = percentileData[0] * 100;
+        let part1 = genBackground( val.toFixed(1))
         let part2 = genBackground((stdDevsToShow[i]*100).toFixed(0) + "%")
-        textTop += `<span style="position: absolute; left: ${position}%; top: 0px; transform: translateX(-50%);"><a title="${date}" href="${url}">`  + "</a></span>";
+        textTop += `<span style="position: absolute; left: ${position}%; top: 0px; transform: translateX(-50%);"><a title="${date}" href="${url}">` + part1 + "</a></span>";
         textTopTop += `<span style="position: absolute; left: ${position}%; top: -10px; transform: translateX(-50%);">`+ part2 + "</span>";
         if (symbols[i] !== "") {
             points += `<span style="position: absolute; left: ${position}%; top: -5px; transform: translateX(-50%);">${symbols[i]}</span>`;
