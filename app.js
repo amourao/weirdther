@@ -395,7 +395,14 @@ function findPercentileForValue(data, value) {
     if (lastIndex === -1) {
         return [0.999, firstIndex, lastIndex];
     }
-    const percentile = (firstIndex+lastIndex) / 2 / data.length;
+    if (firstIndex <= data.length/2 && lastIndex >= data.length/2) {
+        return [0.5, firstIndex, lastIndex];
+    }
+    const percentileLeft = firstIndex / data.length;
+    const percentileRight = lastIndex / data.length;
+
+    // get the percentile value that is closest to 0.5, don't interpolate
+    const percentile = Math.abs(percentileLeft - 0.5) < Math.abs(percentileRight - 0.5) ? percentileLeft : percentileRight;
     return [percentile, firstIndex, lastIndex];
 
 }
