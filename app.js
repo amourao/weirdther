@@ -212,20 +212,27 @@ async function getWeather(){
     }
     // update URL
     const url = new URL(window.location.href);
-    url.searchParams.set('latitude', latitude);
-    url.searchParams.set('longitude', longitude);
-    if (location != "Using coordinates" && location != "Current location") {
-        url.searchParams.set('location', document.getElementById("location").value);
-    }
-    url.searchParams.set('date', dateString);
-    if (delta)
-        url.searchParams.set('delta', delta);
-    if (years_to_get_history)
-        url.searchParams.set('years_to_get_history', years_to_get_history);
-    if (units)
-        url.searchParams.set('units', units);
-    window.history.pushState({}, '', url);
 
+    if (location == "Using coordinates") {
+        url.searchParams.set('latitude', latitude);
+        url.searchParams.set('longitude', longitude);
+    } else if (location != "Current location") {
+        url.searchParams.set('location', document.getElementById("location").value);
+    } 
+    if (dateString != new Date().toISOString().slice(0, 10))
+        url.searchParams.set('date', dateString);
+    if (delta && delta != DEFAULT_DELTA)
+        url.searchParams.set('delta', delta);
+    if (years_to_get_history && years_to_get_history != DEFAULT_YEARS_TO_GET_HISTORY)
+        url.searchParams.set('years_to_get_history', years_to_get_history);
+    if (units && units != "metric")
+        url.searchParams.set('units', units);
+
+    shareUrl = url.toString();
+    if (shareUrl != window.location.href) {
+        window.history.pushState({}, url.pathname, url);
+    }
+    
     const urlParams = new URLSearchParams(window.location.search);
     const isApiCall = urlParams.get('json') == 'true';
 
