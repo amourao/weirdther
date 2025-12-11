@@ -269,6 +269,10 @@
             border: 2px solid #ffa502;
         }
 
+         .forecast-card.extreme-weird {
+            border: 2px solid #ff4757;
+        }
+
         .weird-badge {
             background: #ff6b6b;
             padding: 4px 8px;
@@ -284,6 +288,10 @@
 
         .forecast-card.moderate-weird .weird-badge {
             background: #ffa502;
+        }
+
+        .forecast-card.extreme-weird .weird-badge {
+            background: #ff4757;
         }
 
         .forecast-date {
@@ -452,7 +460,7 @@
         <div id="widget-content" style="display: none;">
             <div class="header">
                 <div class="weirdther-today">
-                    <div class="weirdther-today-label">Weirdther</div>
+                    <div class="weirdther-today-label">Weirdther score</div>
                     <div class="weirdther-today-value" id="currentWeirdther">--</div>
                 </div>
                 <div class="current-weather">
@@ -471,6 +479,7 @@
                            onchange="updateLocation(this.value)"
                            onkeypress="if(event.key === 'Enter') { this.blur(); }"
                     />
+                    <div id="geocode_result" class="coordinates"></div>
                     <div id="location" style="display:none;"></div>
                     <div class="coordinates">
                     <span id="latitude">--</span>
@@ -484,7 +493,6 @@
                 <div id="units" style="display:none;"></div>
                 <div id="summary" style="display:none;"></div>
                 <div id="chart" style="display:none;"></div>
-                <div id="geocode_result" style="display:none;"></div>
             </div>
 
             <div class="forecast-section">
@@ -610,8 +618,8 @@
                 };
 
                 const icon = getWeatherIcon(rain, snow, sunshine);
-                const weirdClass = weirdScore > 70 ? 'high-weird' : (weirdScore < 30 ? 'low-weird' : 'moderate-weird');
-                const weirdLabel = weirdScore > 70 ? 'UNUSUAL' : (weirdScore < 30 ? 'TYPICAL' : 'MODERATE');
+                const weirdClass = weirdScore == 100 ? 'extreme-weird' : (weirdScore > 70 ? 'high-weird' : (weirdScore < 30 ? 'low-weird' : 'moderate-weird'));
+                const weirdLabel = weirdScore == 100 ? 'UNPRECEDENTED' : (weirdScore > 70 ? 'UNUSUAL' : (weirdScore < 30 ? 'TYPICAL' : 'MODERATE'));
 
                 // Build precipitation string
                 let precipString = '';
