@@ -142,11 +142,6 @@
             font-size: 64px;
         }
 
-        .temp-range {
-            font-size: 18px;
-            font-weight: 400;
-            opacity: 0.8;
-        }
 
         .weirdther-today {
             padding: 16px 24px;
@@ -171,17 +166,18 @@
         }
 
         .current-metrics {
-            display: flex;
-            gap: 16px;
-            margin-top: 8px;
-            font-size: 13px;
-            opacity: 0.8;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px 20px;
+            margin-top: 12px;
+            font-size: 16px;
+            opacity: 0.9;
         }
 
         .metric-item {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 6px;
         }
 
         .forecast-section {
@@ -342,18 +338,36 @@
             height: 4px;
             background: rgba(255, 255, 255, 0.2);
             border-radius: 2px;
-            overflow: hidden;
+            overflow: visible;
+            position: relative;
+        }
+
+        .percentile-bar-center {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: rgba(255, 255, 255, 0.4);
+            z-index: 1;
         }
 
         .percentile-fill {
             height: 100%;
-            background: linear-gradient(90deg, #4ecdc4, #44a);
             border-radius: 2px;
-            transition: width 0.5s ease;
+            transition: all 0.5s ease;
+            position: absolute;
+            top: 0;
         }
 
-        .percentile-fill.high {
-            background: linear-gradient(90deg, #ff6b6b, #ff4757);
+        .percentile-fill.above-median {
+            background: linear-gradient(90deg, rgba(255, 107, 107, 0.5), rgba(255, 69, 0, 0.8), #ff4500);
+            left: 50%;
+        }
+
+        .percentile-fill.below-median {
+            background: linear-gradient(90deg, #1e90ff, rgba(30, 144, 255, 0.8), rgba(100, 149, 237, 0.5));
+            right: 50%;
         }
 
         .rain-indicator {
@@ -396,9 +410,6 @@
         }
 
         @media (max-width: 768px) {
-            .temp-range {
-                font-size: 16px;
-            }
             
             .weather-icon {
                 font-size: 56px;
@@ -409,7 +420,8 @@
             }
             
             .current-metrics {
-                font-size: 18px;
+                font-size: 15px;
+                gap: 10px 16px;
             }
             
             .selected-day {
@@ -422,9 +434,6 @@
         }
 
         @media (max-width: 480px) {
-            .temp-range {
-                font-size: 14px;
-            }
             
             .weather-icon {
                 font-size: 48px;
@@ -435,9 +444,9 @@
             }
             
             .current-metrics {
-                font-size: 16px;
-                flex-wrap: wrap;
-                justify-content: center;
+                font-size: 14px;
+                gap: 8px 12px;
+                grid-template-columns: 1fr;
             }
             
             .location-input {
@@ -466,7 +475,10 @@
                 <div class="current-weather">
                     <div class="weather-icon" id="weatherIcon">🌤️</div>
                     <div>
-                        <div class="temp-range" id="currentRange">-- / --</div>
+                        <div class="forecast-temp" id="currentRange">
+                            <span class="forecast-temp-high" id="currentRangeHigh"></span>
+                            <span class="forecast-temp-low" id="currentRangeLow"></span>
+                        </div>
                         <div class="current-metrics" id="currentMetrics"></div>
                     </div>
                 </div>
@@ -531,9 +543,18 @@
             return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}`;
         }
 
-        function getPercentileColor(value) {
-            if (value > 0.8 || value < 0.2) return 'high';
-            return '';
+        function getPercentileBarHTML(percentile) {
+            // Calculate distance from median (0.5)
+            const distanceFromMedian = Math.abs(percentile - 0.5);
+            const width = distanceFromMedian * 100; // Width is distance from center (0-50%)
+            
+            if (percentile > 0.5) {
+                // Above median - bar extends to the right
+                return `<div class="percentile-fill above-median" style="width: ${width}%"></div>`;
+            } else {
+                // Below median - bar extends to the left
+                return `<div class="percentile-fill below-median" style="width: ${width}%"></div>`;
+            }
         }
 
         function initializeWidget() {
@@ -663,8 +684,8 @@
                                     <span>${getPercentilePretty(percentiles.tempMax)}</span>
                                 </div>
                                 <div class="percentile-bar">
-                                    <div class="percentile-fill ${getPercentileColor(percentiles.tempMax)}" 
-                                         style="width: ${percentiles.tempMax * 100}%"></div>
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.tempMax)}
                                 </div>
                             </div>
                             <div class="percentile-item">
@@ -673,8 +694,8 @@
                                     <span>${getPercentilePretty(percentiles.tempMin)}</span>
                                 </div>
                                 <div class="percentile-bar">
-                                    <div class="percentile-fill ${getPercentileColor(percentiles.tempMin)}" 
-                                         style="width: ${percentiles.tempMin * 100}%"></div>
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.tempMin)}
                                 </div>
                             </div>
                             <div class="percentile-item">
@@ -683,8 +704,8 @@
                                     <span>${getPercentilePretty(percentiles.rain)}</span>
                                 </div>
                                 <div class="percentile-bar">
-                                    <div class="percentile-fill ${getPercentileColor(percentiles.rain)}" 
-                                         style="width: ${percentiles.rain * 100}%"></div>
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.rain)}
                                 </div>
                             </div>
                             ${allDays.snowfall_sum ? `
@@ -694,8 +715,8 @@
                                     <span>${getPercentilePretty(percentiles.snow)}</span>
                                 </div>
                                 <div class="percentile-bar">
-                                    <div class="percentile-fill ${getPercentileColor(percentiles.snow)}" 
-                                         style="width: ${percentiles.snow * 100}%"></div>
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.snow)}
                                 </div>
                             </div>
                             ` : ''}
@@ -705,8 +726,8 @@
                                     <span>${getPercentilePretty(percentiles.wind)}</span>
                                 </div>
                                 <div class="percentile-bar">
-                                    <div class="percentile-fill ${getPercentileColor(percentiles.wind)}" 
-                                         style="width: ${percentiles.wind * 100}%"></div>
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.wind)}
                                 </div>
                             </div>
                             <div class="percentile-item">
@@ -715,8 +736,8 @@
                                     <span>${getPercentilePretty(percentiles.sunshine)}</span>
                                 </div>
                                 <div class="percentile-bar">
-                                    <div class="percentile-fill ${getPercentileColor(percentiles.sunshine)}" 
-                                         style="width: ${percentiles.sunshine * 100}%"></div>
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.sunshine)}
                                 </div>
                             </div>
                         </div>
@@ -759,7 +780,8 @@
             document.getElementById('condition').textContent = getConditionFromData(rain, snow, sunshine);
             
             // Update temperature range
-            document.getElementById('currentRange').textContent = `${Math.round(tempMax)}° / ${Math.round(tempMin)}°`;
+            document.getElementById('currentRangeHigh').textContent = `${Math.round(tempMax)}°`;
+            document.getElementById('currentRangeLow').textContent = `${Math.round(tempMin)}°`;
             
             // Update weirdther score
             const weirdtherElement = document.getElementById('currentWeirdther');
