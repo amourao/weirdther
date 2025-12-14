@@ -576,6 +576,14 @@
             return 'Cloudy';
         }
 
+        function getPercentilePretty(value) {
+            var valueInt = Math.round(value * 100)
+            if (valueInt == 1) return "1st";
+            if (valueInt == 2) return "2nd";
+            if (valueInt == 3) return "3rd";
+            return valueInt + "th";
+        }
+
         function renderForecast(weatherData) {
             const forecastGrid = document.getElementById('forecastGrid');
             const todayData = weatherData.results["Selected day"];
@@ -594,7 +602,8 @@
                     temperature_2m_min: [todayData.percentiles.temperature_2m_min[0], ...futureData.percentiles.temperature_2m_min],
                     rain_sum: [todayData.percentiles.rain_sum[0], ...futureData.percentiles.rain_sum],
                     wind_speed_10m_max: [todayData.percentiles.wind_speed_10m_max[0], ...futureData.percentiles.wind_speed_10m_max],
-                    sunshine_duration: [todayData.percentiles.sunshine_duration[0], ...futureData.percentiles.sunshine_duration]
+                    sunshine_duration: [todayData.percentiles.sunshine_duration[0], ...futureData.percentiles.sunshine_duration],
+                    snowfall_sum: todayData.percentiles.snowfall_sum ? [todayData.percentiles.snowfall_sum[0], ...(futureData.percentiles.snowfall_sum || [])] : null
                 },
                 weirdther_score: [todayData.weirdther_score[0], ...futureData.weirdther_score],
                 snowfall_sum: todayData.snowfall_sum ? [todayData.snowfall_sum[0], ...(futureData.snowfall_sum || [])] : null
@@ -614,7 +623,8 @@
                     tempMin: parseFloat(allDays.percentiles.temperature_2m_min[index]),
                     rain: parseFloat(allDays.percentiles.rain_sum[index]),
                     wind: parseFloat(allDays.percentiles.wind_speed_10m_max[index]),
-                    sunshine: parseFloat(allDays.percentiles.sunshine_duration[index])
+                    sunshine: parseFloat(allDays.percentiles.sunshine_duration[index]),
+                    snow: allDays.percentiles.snowfall_sum ? parseFloat(allDays.percentiles.snowfall_sum[index]) : 0
                 };
 
                 const icon = getWeatherIcon(rain, snow, sunshine);
@@ -633,7 +643,7 @@
                 // Sunshine first, then precipitation
                 const sunshineAndPrecip = `☀️ ${Math.round(sunshine * 100)}%` + (precipString ? '  ' + precipString : '');
 
-                const isToday = index === 0;
+                const isToday = new Date(date).toDateString() === new Date().toDateString();
                 const dateLabel = isToday ? 'Today' : formatDate(date);
 
                 return `
@@ -650,7 +660,7 @@
                             <div class="percentile-item">
                                 <div class="percentile-label">
                                     <span>Max Temp</span>
-                                    <span>${Math.round(percentiles.tempMax * 100)}%</span>
+                                    <span>${getPercentilePretty(percentiles.tempMax)}</span>
                                 </div>
                                 <div class="percentile-bar">
                                     <div class="percentile-fill ${getPercentileColor(percentiles.tempMax)}" 
@@ -660,7 +670,7 @@
                             <div class="percentile-item">
                                 <div class="percentile-label">
                                     <span>Min Temp</span>
-                                    <span>${Math.round(percentiles.tempMin * 100)}%</span>
+                                    <span>${getPercentilePretty(percentiles.tempMin)}</span>
                                 </div>
                                 <div class="percentile-bar">
                                     <div class="percentile-fill ${getPercentileColor(percentiles.tempMin)}" 
@@ -670,17 +680,29 @@
                             <div class="percentile-item">
                                 <div class="percentile-label">
                                     <span>Rain</span>
-                                    <span>${Math.round(percentiles.rain * 100)}%</span>
+                                    <span>${getPercentilePretty(percentiles.rain)}</span>
                                 </div>
                                 <div class="percentile-bar">
                                     <div class="percentile-fill ${getPercentileColor(percentiles.rain)}" 
                                          style="width: ${percentiles.rain * 100}%"></div>
                                 </div>
                             </div>
+                            ${allDays.snowfall_sum ? `
+                            <div class="percentile-item">
+                                <div class="percentile-label">
+                                    <span>Snow</span>
+                                    <span>${getPercentilePretty(percentiles.snow)}</span>
+                                </div>
+                                <div class="percentile-bar">
+                                    <div class="percentile-fill ${getPercentileColor(percentiles.snow)}" 
+                                         style="width: ${percentiles.snow * 100}%"></div>
+                                </div>
+                            </div>
+                            ` : ''}
                             <div class="percentile-item">
                                 <div class="percentile-label">
                                     <span>Wind</span>
-                                    <span>${Math.round(percentiles.wind * 100)}%</span>
+                                    <span>${getPercentilePretty(percentiles.wind)}</span>
                                 </div>
                                 <div class="percentile-bar">
                                     <div class="percentile-fill ${getPercentileColor(percentiles.wind)}" 
@@ -690,7 +712,7 @@
                             <div class="percentile-item">
                                 <div class="percentile-label">
                                     <span>Sunshine</span>
-                                    <span>${Math.round(percentiles.sunshine * 100)}%</span>
+                                    <span>${getPercentilePretty(percentiles.sunshine)}</span>
                                 </div>
                                 <div class="percentile-bar">
                                     <div class="percentile-fill ${getPercentileColor(percentiles.sunshine)}" 
@@ -699,7 +721,7 @@
                             </div>
                         </div>
                         <div class="weirdther-score">
-                            <div class="weirdther-label">Weirdther</div>
+                            <div class="weirdther-label">Weirdther score</div>
                             <div class="weirdther-value" style="color: ${weirdScore > 70 ? '#ff6b6b' : (weirdScore < 30 ? '#4ecdc4' : '#ffa502')}">${Math.round(weirdScore)}</div>
                         </div>
                     </div>
@@ -723,7 +745,7 @@
             
             // Update selected day display
             const selectedDayElement = document.getElementById('selectedDay');
-            if (index === 0) {
+            if (new Date(data.time[index]).toDateString() === new Date().toDateString()) {
                 selectedDayElement.textContent = 'Today';
             } else {
                 selectedDayElement.textContent = formatDate(data.time[index]);
@@ -781,15 +803,26 @@
         }
 
         function updateLocation(newLocation) {
-            if (newLocation && newLocation.trim()) {
-                // Update the hidden location field
-                document.getElementById('location').value = newLocation;
-                
-                // Show loading state
-                document.getElementById('loading').style.display = 'block';
-                document.getElementById('widget-content').style.display = 'none';
-                
-                // Trigger weather data reload
+            // Update the hidden location field
+            document.getElementById('location').value = newLocation;
+            document.getElementById('latitude').value = '';
+            document.getElementById('longitude').value = '';
+            
+            // Show loading state
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('widget-content').style.display = 'none';
+            
+            console.log("Updating location to:", newLocation);
+            // Trigger weather data reload
+            if (newLocation.trim() == '') {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    console.log("Using current location coordinates:", position.coords.latitude, position.coords.longitude);
+                    document.getElementById("latitude").value = position.coords.latitude.toFixed(2);
+                    document.getElementById("longitude").value = position.coords.longitude.toFixed(2);
+                    document.getElementById("location").value = "Current location";
+                    getWeather();
+                }); 
+            } else {
                 getWeather();
             }
         }
