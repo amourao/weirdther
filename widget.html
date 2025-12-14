@@ -517,11 +517,10 @@
 
         function getWeatherIcon(rain, snow, sunshine) {
             if (snow > 0) return '❄️';
-            if (rain >= 5) return '🌧️';
-            if (rain > 0) return '🌦️';
-            if (sunshine > 0.75) return '☀️';
-            if (sunshine > 0.5) return '🌤️';
-            if (sunshine > 0.25) return '⛅';
+            if (rain > 20) return '🌧️';
+            if (rain > 0 && rain < 5) return '🌦️';
+            if (sunshine > 0.7) return '☀️';
+            if (sunshine > 0.3) return '⛅';
             return '☁️';
         }
 
