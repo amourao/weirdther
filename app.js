@@ -88,10 +88,7 @@ var SELF_LINK = null;
 var LINEAR_SCALE = true;
 
 async function start() {
-    isWidget = false;
-    if (window.location.pathname.endsWith("widget.html")) {
-        isWidget = true;
-    }
+    isWidget = true;
     document.getElementById("date").value = new Date().toISOString().slice(0, 10);
     // parse GET parameters
     const urlParams = new URLSearchParams(window.location.search);

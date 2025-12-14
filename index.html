@@ -1,126 +1,884 @@
 <!DOCTYPE html>
-<html> 
+<html lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
-    <title>Weirdther</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weirdther Widget</title>
     <script src="app.js"></script>
-    <script>
-        window.onload = start;
-    </script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             display: flex;
-            flex-direction: column;
+            justify-content: center;
             align-items: center;
+            min-height: 100vh;
+            padding: 20px;
         }
 
-        .form-row {
-            display: flex;
-            justify-content: left;
-            align-items: left;
-            margin-bottom: 10px;
-        }
-        .form-row label {
-            margin-right: 10px;
-        }
-        .button-row {
-            display: flex;
-            justify-content: space-between;
+        .widget-container {
+            background: rgba(0, 0, 0, 0.85);
+            border-radius: 24px;
+            padding: 32px;
+            max-width: 1200px;
             width: 100%;
+            color: white;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
         }
 
-        #summary, #chart {
-            margin: 20px;
-            width: 90%;
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        .chart-container {
-            overflow-x: scroll;
-            width: fit-content;
-        }
-
-        @media (min-width: 800px) {
-            form, #summary, #geocode, #header, #chart {
-                width: 800px;
+        @media (max-width: 768px) {
+            .widget-container {
+                padding: 20px;
+                border-radius: 16px;
             }
         }
 
-        
+        @media (max-width: 480px) {
+            .widget-container {
+                padding: 16px;
+            }
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            gap: 24px;
+        }
+
+        .date-section {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .date-section {
+                width: 100%;
+                order: 2;
+            }
+            
+            .weirdther-today {
+                width: 100%;
+            }
+            
+            .current-weather {
+                width: 100%;
+                justify-content: center;
+                order: 3;
+            }
+            
+            .location-info {
+                width: 100%;
+                text-align: center !important;
+                order: 1;
+            }
+        }
+
+        .location-info {
+            text-align: right;
+        }
+
+        .location {
+            font-size: 32px;
+            font-weight: 300;
+            margin-bottom: 4px;
+        }
+
+        .location-input {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 6px 12px;
+            color: white;
+            font-size: 32px;
+            font-weight: 300;
+            text-align: right;
+            margin-bottom: 4px;
+            width: 100%;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .location-input:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        .location-input:focus {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .location-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .coordinates {
+            font-size: 13px;
+            opacity: 0.6;
+            margin-bottom: 8px;
+        }
+
+        .condition {
+            font-size: 18px;
+            opacity: 0.8;
+        }
+
+        .selected-day {
+            font-size: 22px;
+            opacity: 0.9;
+            font-weight: 600;
+            text-align: left;
+        }
+
+        .current-weather {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex: 1;
+        }
+
+        .weather-icon {
+            font-size: 64px;
+        }
+
+
+        .weirdther-today {
+            padding: 16px 24px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            text-align: left;
+            flex-shrink: 0;
+        }
+
+        .weirdther-today-label {
+            font-size: 11px;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .weirdther-today-value {
+            font-size: 56px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .current-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px 20px;
+            margin-top: 12px;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .metric-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .forecast-section {
+            margin-top: 32px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.6;
+            margin-bottom: 16px;
+        }
+
+        .forecast-grid {
+            display: flex;
+            gap: 16px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding-bottom: 16px;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+
+        .forecast-grid::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .forecast-grid::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        .forecast-grid::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+
+        .forecast-grid::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .forecast-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            min-width: 180px;
+            max-width: 200px;
+            flex-shrink: 0;
+            scroll-snap-align: start;
+        }
+
+        @media (max-width: 480px) {
+            .forecast-card {
+                min-width: 150px;
+                max-width: 170px;
+                padding: 16px;
+            }
+        }
+
+        .forecast-card:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-4px);
+        }
+
+        .forecast-card.active {
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+        }
+
+        .forecast-card.high-weird {
+            border: 2px solid #ff6b6b;
+        }
+
+        .forecast-card.low-weird {
+            border: 2px solid #4ecdc4;
+        }
+
+        .forecast-card.moderate-weird {
+            border: 2px solid #ffa502;
+        }
+
+         .forecast-card.extreme-weird {
+            border: 2px solid #ff4757;
+        }
+
+        .weird-badge {
+            background: #ff6b6b;
+            padding: 4px 8px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .forecast-card.low-weird .weird-badge {
+            background: #4ecdc4;
+        }
+
+        .forecast-card.moderate-weird .weird-badge {
+            background: #ffa502;
+        }
+
+        .forecast-card.extreme-weird .weird-badge {
+            background: #ff4757;
+        }
+
+        .forecast-date {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-bottom: 12px;
+        }
+
+        .forecast-temps {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .forecast-temp-high {
+            font-size: 28px;
+            font-weight: 500;
+        }
+
+        .forecast-temp-low {
+            font-size: 20px;
+            opacity: 0.6;
+        }
+
+        .forecast-icon {
+            font-size: 40px;
+            margin-bottom: 8px;
+        }
+
+        .percentile-bars {
+            margin-top: 12px;
+        }
+
+        .percentile-item {
+            margin-bottom: 8px;
+        }
+
+        .percentile-label {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .percentile-bar {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            overflow: visible;
+            position: relative;
+        }
+
+        .percentile-bar-center {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: rgba(255, 255, 255, 0.4);
+            z-index: 1;
+        }
+
+        .percentile-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: all 0.5s ease;
+            position: absolute;
+            top: 0;
+        }
+
+        .percentile-fill.above-median {
+            background: linear-gradient(90deg, rgba(255, 107, 107, 0.5), rgba(255, 69, 0, 0.8), #ff4500);
+            left: 50%;
+        }
+
+        .percentile-fill.below-median {
+            background: linear-gradient(90deg, #1e90ff, rgba(30, 144, 255, 0.8), rgba(100, 149, 237, 0.5));
+            right: 50%;
+        }
+
+        .rain-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            margin-top: 8px;
+            opacity: 0.8;
+            min-height: 20px;
+            flex-wrap: wrap;
+        }
+
+        .weirdther-score {
+            margin-top: 16px;
+            padding: 16px 12px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .weirdther-label {
+            font-size: 10px;
+            opacity: 0.7;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .weirdther-value {
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+        }
+
+        @media (max-width: 768px) {
+            
+            .weather-icon {
+                font-size: 56px;
+            }
+            
+            .weirdther-today {
+                text-align: center;
+            }
+
+            .weirdther-today-value {
+                font-size: 48px;
+            }
+            
+            .current-metrics {
+                font-size: 15px;
+                gap: 10px 16px;
+            }
+            
+            .selected-day {
+                font-size: 18px;
+                text-align: center;
+            }
+            
+            .location-input {
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            
+            .weather-icon {
+                font-size: 48px;
+            }
+            
+            .weirdther-today-value {
+                font-size: 42px;
+            }
+            
+            .current-metrics {
+                font-size: 14px;
+                gap: 8px 12px;
+                grid-template-columns: 1fr;
+            }
+            
+            .location-input {
+                font-size: 24px;
+            }
+            
+            .selected-day {
+                font-size: 16px;
+            }
+            
+            .section-title {
+                font-size: 12px;
+            }
+        }
     </style>
 </head>
 <body>
-    <!-- All text in the same line -->
-    <div id="header" style="display:flex; justify-content:left; align-items:baseline;">
-        <h2><a href="?" style="text-decoration:none; color:black">Weirdther</a></h2> 
-        <p style="margin-left: 10px;">how weird is the weather today?</p>
+    <div class="widget-container">
+        <div id="loading" class="loading">Loading weather data...</div>
+        <div id="widget-content" style="display: none;">
+            <div class="header">
+                <div class="date-section">
+                    <div class="selected-day" id="selectedDay">Today</div>
+                    <div class="weirdther-today">
+                        <div class="weirdther-today-label">Weirdther score</div>
+                        <div class="weirdther-today-value" id="currentWeirdther">--</div>
+                    </div>
+                </div>
+                <div class="current-weather">
+                    <div class="weather-icon" id="weatherIcon">🌤️</div>
+                    <div>
+                        <div class="forecast-temp" id="currentRange">
+                            <span class="forecast-temp-high" id="currentRangeHigh"></span>
+                            <span class="forecast-temp-low" id="currentRangeLow"></span>
+                        </div>
+                        <div class="current-metrics" id="currentMetrics"></div>
+                    </div>
+                </div>
+                <div class="location-info">
+                    <input type="text" 
+                           id="locationInput" 
+                           class="location-input"
+                           placeholder="Enter location"
+                           onchange="updateLocation(this.value)"
+                           onkeypress="if(event.key === 'Enter') { this.blur(); }"
+                    />
+                    <div id="geocode_result" class="coordinates"></div>
+                    <div id="location" style="display:none;"></div>
+                    <div class="coordinates">
+                    <span id="latitude">--</span>
+                    <span id="longitude">--</span>
+                    </div>
+                    <div class="condition" id="condition">--</div>
+                </div>
+                <div id="date" style="display:none;"></div>
+                <div id="delta" style="display:none;"></div>
+                <div id="years_to_get_history" style="display:none;"></div>
+                <div id="units" style="display:none;"></div>
+                <div id="summary" style="display:none;"></div>
+                <div id="chart" style="display:none;"></div>
+            </div>
+
+            <div class="forecast-section">
+                <div class="section-title">5-Day Forecast</div>
+                <div class="forecast-grid" id="forecastGrid"></div>
+            </div>
+        </div>
     </div>
-    <form id="weatherForm" onsubmit="event.preventDefault(); getWeather();">
-        <div class="form-row">
-            <label for="location">Location:</label>
-            <input type="text" id="location" placeholder="City name">
-        </div>
 
-        <div class="form-row">
-            <label for="date">Date:</label>
-            <input type="date" id="date">
-        </div>
-       
-        <div id="extraFields" class="hidden">
+    <script>
 
-            <div class="form-row">
-                <label for="units">Units:</label>
-                <select id="units" value="metric">
-                    <option value="metric">Metric</option>
-                    <option value="imperial">Imperial</option>
-                </select>
-            </div>
+        // Store the weather data globally
+        let widgetWeatherData = null;
 
-            <div class="form-row">
-                <label for="latitude">Latitude:</label>
-                <input type="text" id="latitude">
-            </div>
-    
-            <div class="form-row">
-                <label for="longitude">Longitude:</label>
-                <input type="text" id="longitude">
-            </div>
+        // Override the original getWeather to capture data
+        const originalGetWeather = getWeather;
+        getWeather = async function() {
+            await originalGetWeather();
+            // After data is loaded, extract it for the widget
+            initializeWidget();
+        };
 
-            <div class="form-row">
-                <label for="delta">Delta (days):</label>
-                <input type="number" id="delta" value="5">
-            </div>
+        function getWeatherIcon(rain, snow, sunshine) {
+            if (snow > 0) return '❄️';
+            if (rain > 20) return '🌧️';
+            if (rain > 0 && rain < 5) return '🌦️';
+            if (sunshine > 0.7) return '☀️';
+            if (sunshine > 0.3) return '⛅';
+            return '☁️';
+        }
 
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}`;
+        }
 
-            <div class="form-row">
-                <label for="years_to_get_history">Years of History:</label>
-                <input type="number" id="years_to_get_history" value="24">
-            </div>
+        function getPercentileBarHTML(percentile) {
+            // Calculate distance from median (0.5)
+            const distanceFromMedian = Math.abs(percentile - 0.5);
+            const width = distanceFromMedian * 100; // Width is distance from center (0-50%)
+            
+            if (percentile > 0.5) {
+                // Above median - bar extends to the right
+                return `<div class="percentile-fill above-median" style="width: ${width}%"></div>`;
+            } else {
+                // Below median - bar extends to the left
+                return `<div class="percentile-fill below-median" style="width: ${width}%"></div>`;
+            }
+        }
 
-            <div class="form-row">
-                <!-- button to clear local store-->
-                <button type="button" onclick="localStorage.clear();">Clear Local Storage</button>
-            </div>
-        </div>
+        function initializeWidget() {
+            // Get data from the global variables set by app.js
+            if (!window.widgetData) {
+                console.error('No widget data available');
+                return;
+            }
 
-        <button type="button" onclick="document.getElementById('extraFields').classList.toggle('hidden');">Show/Hide Extra Fields</button>
+            const data = window.widgetData;
+            
+            // Update location info - populate the input field
+            document.getElementById('locationInput').value = data.parameters.location;
+            document.getElementById('location').value = data.parameters.location;
+            document.getElementById('latitude').textContent = `${data.parameters.latitude}°${data.parameters.latitude < 0 ? 'S' : 'N'}`;
+            document.getElementById('longitude').textContent = `${Math.abs(data.parameters.longitude)}°${data.parameters.longitude < 0 ? 'W' : 'E'}`;
+            document.getElementById('condition').textContent = getConditionText(data.results["Selected day"]);
 
-        <input type="submit" value="Get Weather">
+            // Hide loading, show content
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('widget-content').style.display = 'block';
 
-    </form>
+            // Render forecast
+            renderForecast(data);
+            
+            // Initialize with today's data
+            showDetails(0);
+        }
 
-    <div id="geocode" style="margin-top: 20px;">
-        <b>Results for: </b> <span id="geocode_result"></span>
-    </div>
-    <div id="summary"></div>
-    <div id="chart" style="font-family: monospace"></div>
+        function getConditionText(dayData) {
+            const rain = dayData.rain_sum[0];
+            const snow = dayData.snowfall_sum ? dayData.snowfall_sum[0] : 0;
+            const sunshine = dayData.sunshine_duration[0];
+            
+            if (snow > 0) return 'Snowy';
+            if (rain > 20) return 'Rainy';
+            if (rain > 0 && rain < 5) return 'Light Rain';
+            if (sunshine > 0.7) return 'Sunny';
+            if (sunshine > 0.3) return 'Partly Cloudy';
+            return 'Cloudy';
+        }
 
+        function getPercentilePretty(value) {
+            var valueInt = Math.round(value * 100)
+            if (valueInt == 1) return "1st";
+            if (valueInt == 2) return "2nd";
+            if (valueInt == 3) return "3rd";
+            return valueInt + "th";
+        }
+
+        function renderForecast(weatherData) {
+            const forecastGrid = document.getElementById('forecastGrid');
+            const todayData = weatherData.results["Selected day"];
+            const futureData = weatherData.results["Days after"];
+            
+            // Combine today and future days
+            const allDays = {
+                time: [todayData.time[0], ...futureData.time],
+                temperature_2m_max: [todayData.temperature_2m_max[0], ...futureData.temperature_2m_max],
+                temperature_2m_min: [todayData.temperature_2m_min[0], ...futureData.temperature_2m_min],
+                rain_sum: [todayData.rain_sum[0], ...futureData.rain_sum],
+                wind_speed_10m_max: [todayData.wind_speed_10m_max[0], ...futureData.wind_speed_10m_max],
+                sunshine_duration: [todayData.sunshine_duration[0], ...futureData.sunshine_duration],
+                percentiles: {
+                    temperature_2m_max: [todayData.percentiles.temperature_2m_max[0], ...futureData.percentiles.temperature_2m_max],
+                    temperature_2m_min: [todayData.percentiles.temperature_2m_min[0], ...futureData.percentiles.temperature_2m_min],
+                    rain_sum: [todayData.percentiles.rain_sum[0], ...futureData.percentiles.rain_sum],
+                    wind_speed_10m_max: [todayData.percentiles.wind_speed_10m_max[0], ...futureData.percentiles.wind_speed_10m_max],
+                    sunshine_duration: [todayData.percentiles.sunshine_duration[0], ...futureData.percentiles.sunshine_duration],
+                    snowfall_sum: todayData.percentiles.snowfall_sum ? [todayData.percentiles.snowfall_sum[0], ...(futureData.percentiles.snowfall_sum || [])] : null
+                },
+                weirdther_score: [todayData.weirdther_score[0], ...futureData.weirdther_score],
+                snowfall_sum: todayData.snowfall_sum ? [todayData.snowfall_sum[0], ...(futureData.snowfall_sum || [])] : null
+            };
+            
+            forecastGrid.innerHTML = allDays.time.map((date, index) => {
+                const tempMax = allDays.temperature_2m_max[index];
+                const tempMin = allDays.temperature_2m_min[index];
+                const rain = allDays.rain_sum[index];
+                const snow = allDays.snowfall_sum ? allDays.snowfall_sum[index] : 0;
+                const wind = allDays.wind_speed_10m_max[index];
+                const sunshine = allDays.sunshine_duration[index];
+                const weirdScore = allDays.weirdther_score[index];
+                
+                const percentiles = {
+                    tempMax: parseFloat(allDays.percentiles.temperature_2m_max[index]),
+                    tempMin: parseFloat(allDays.percentiles.temperature_2m_min[index]),
+                    rain: parseFloat(allDays.percentiles.rain_sum[index]),
+                    wind: parseFloat(allDays.percentiles.wind_speed_10m_max[index]),
+                    sunshine: parseFloat(allDays.percentiles.sunshine_duration[index]),
+                    snow: allDays.percentiles.snowfall_sum ? parseFloat(allDays.percentiles.snowfall_sum[index]) : 0
+                };
+
+                const icon = getWeatherIcon(rain, snow, sunshine);
+                const weirdClass = weirdScore == 100 ? 'extreme-weird' : (weirdScore > 70 ? 'high-weird' : (weirdScore < 30 ? 'low-weird' : 'moderate-weird'));
+                const weirdLabel = weirdScore == 100 ? 'UNPRECEDENTED' : (weirdScore > 70 ? 'UNUSUAL' : (weirdScore < 30 ? 'TYPICAL' : 'MODERATE'));
+
+                // Build precipitation string
+                let precipString = '';
+                if (rain > 0 || snow > 0) {
+                    const parts = [];
+                    if (rain > 0) parts.push(`💧 ${rain.toFixed(1)}mm`);
+                    if (snow > 0) parts.push(`❄️ ${snow.toFixed(1)}cm`);
+                    precipString = parts.join(' ');
+                }
+
+                // Sunshine first, then precipitation
+                const sunshineAndPrecip = `☀️ ${Math.round(sunshine * 100)}%` + (precipString ? '  ' + precipString : '');
+
+                const isToday = new Date(date).toDateString() === new Date().toDateString();
+                const dateLabel = isToday ? 'Today' : formatDate(date);
+
+                return `
+                    <div class="forecast-card ${weirdClass} ${isToday ? 'active' : ''}" onclick="showDetails(${index})" data-index="${index}">
+                        ${weirdClass ? `<div class="weird-badge">${weirdLabel}</div>` : ''}
+                        <div class="forecast-date">${dateLabel}</div>
+                        <div class="forecast-icon">${icon}</div>
+                        <div class="forecast-temps">
+                            <span class="forecast-temp-high">${Math.round(tempMax)}°</span>
+                            <span class="forecast-temp-low">${Math.round(tempMin)}°</span>
+                        </div>
+                        <div class="rain-indicator">${sunshineAndPrecip}</div>
+                        <div class="percentile-bars">
+                            <div class="percentile-item">
+                                <div class="percentile-label">
+                                    <span>Max Temp</span>
+                                    <span>${getPercentilePretty(percentiles.tempMax)}</span>
+                                </div>
+                                <div class="percentile-bar">
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.tempMax)}
+                                </div>
+                            </div>
+                            <div class="percentile-item">
+                                <div class="percentile-label">
+                                    <span>Min Temp</span>
+                                    <span>${getPercentilePretty(percentiles.tempMin)}</span>
+                                </div>
+                                <div class="percentile-bar">
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.tempMin)}
+                                </div>
+                            </div>
+                            <div class="percentile-item">
+                                <div class="percentile-label">
+                                    <span>Rain</span>
+                                    <span>${getPercentilePretty(percentiles.rain)}</span>
+                                </div>
+                                <div class="percentile-bar">
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.rain)}
+                                </div>
+                            </div>
+                            ${allDays.snowfall_sum ? `
+                            <div class="percentile-item">
+                                <div class="percentile-label">
+                                    <span>Snow</span>
+                                    <span>${getPercentilePretty(percentiles.snow)}</span>
+                                </div>
+                                <div class="percentile-bar">
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.snow)}
+                                </div>
+                            </div>
+                            ` : ''}
+                            <div class="percentile-item">
+                                <div class="percentile-label">
+                                    <span>Wind</span>
+                                    <span>${getPercentilePretty(percentiles.wind)}</span>
+                                </div>
+                                <div class="percentile-bar">
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.wind)}
+                                </div>
+                            </div>
+                            <div class="percentile-item">
+                                <div class="percentile-label">
+                                    <span>Sunshine</span>
+                                    <span>${getPercentilePretty(percentiles.sunshine)}</span>
+                                </div>
+                                <div class="percentile-bar">
+                                    <div class="percentile-bar-center"></div>
+                                    ${getPercentileBarHTML(percentiles.sunshine)}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="weirdther-score">
+                            <div class="weirdther-label">Weirdther score</div>
+                            <div class="weirdther-value" style="color: ${weirdScore > 70 ? '#ff6b6b' : (weirdScore < 30 ? '#4ecdc4' : '#ffa502')}">${Math.round(weirdScore)}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // Store all days data globally for showDetails to use
+            window.allDaysData = allDays;
+        }
+
+        function showDetails(index) {
+            const data = window.allDaysData;
+            
+            const tempMax = data.temperature_2m_max[index];
+            const tempMin = data.temperature_2m_min[index];
+            const rain = data.rain_sum[index];
+            const snow = data.snowfall_sum ? data.snowfall_sum[index] : 0;
+            const wind = data.wind_speed_10m_max[index];
+            const sunshine = data.sunshine_duration[index];
+            const weirdScore = data.weirdther_score[index];
+            
+            // Update selected day display
+            const selectedDayElement = document.getElementById('selectedDay');
+            if (new Date(data.time[index]).toDateString() === new Date().toDateString()) {
+                selectedDayElement.textContent = 'Today';
+            } else {
+                selectedDayElement.textContent = formatDate(data.time[index]);
+            }
+            
+            // Update weather icon
+            const icon = getWeatherIcon(rain, snow, sunshine);
+            document.getElementById('weatherIcon').textContent = icon;
+            
+            // Update condition
+            document.getElementById('condition').textContent = getConditionFromData(rain, snow, sunshine);
+            
+            // Update temperature range
+            document.getElementById('currentRangeHigh').textContent = `${Math.round(tempMax)}°`;
+            document.getElementById('currentRangeLow').textContent = `${Math.round(tempMin)}°`;
+            
+            // Update weirdther score
+            const weirdtherElement = document.getElementById('currentWeirdther');
+            weirdtherElement.textContent = Math.round(weirdScore);
+            weirdtherElement.style.color = weirdScore > 70 ? '#ff6b6b' : (weirdScore < 30 ? '#4ecdc4' : '#ffa502');
+            
+            // Update metrics
+            const currentMetrics = document.getElementById('currentMetrics');
+            let metricsHTML = `
+                <div class="metric-item">💧 ${rain.toFixed(1)}mm</div>
+            `;
+            
+            if (snow > 0) {
+                metricsHTML += `<div class="metric-item">❄️ ${snow.toFixed(1)}cm</div>`;
+            }
+            
+            metricsHTML += `
+                <div class="metric-item">💨 ${Math.round(wind)}km/h</div>
+                <div class="metric-item">☀️ ${Math.round(sunshine * 100)}%</div>
+            `;
+            
+            currentMetrics.innerHTML = metricsHTML;
+            
+            // Update active state on cards
+            document.querySelectorAll('.forecast-card').forEach((card, i) => {
+                if (i === index) {
+                    card.classList.add('active');
+                } else {
+                    card.classList.remove('active');
+                }
+            });
+        }
+
+        function getConditionFromData(rain, snow, sunshine) {
+            if (snow > 0) return 'Snowy';
+            if (rain > 20) return 'Rainy';
+            if (rain > 0 && rain < 5) return 'Light Rain';
+            if (sunshine > 0.7) return 'Sunny';
+            if (sunshine > 0.3) return 'Partly Cloudy';
+            return 'Cloudy';
+        }
+
+        function updateLocation(newLocation) {
+            // Update the hidden location field
+            document.getElementById('location').value = newLocation;
+            document.getElementById('latitude').value = '';
+            document.getElementById('longitude').value = '';
+            
+            // Show loading state
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('widget-content').style.display = 'none';
+            
+            console.log("Updating location to:", newLocation);
+            // Trigger weather data reload
+            if (newLocation.trim() == '') {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    console.log("Using current location coordinates:", position.coords.latitude, position.coords.longitude);
+                    document.getElementById("latitude").value = position.coords.latitude.toFixed(2);
+                    document.getElementById("longitude").value = position.coords.longitude.toFixed(2);
+                    document.getElementById("location").value = "Current location";
+                    getWeather();
+                }); 
+            } else {
+                getWeather();
+            }
+        }
+
+        window.onload = async function() {
+            
+            // set default parameters for hidden fields
+            document.getElementById('date').value = document.getElementById('date').innerHTML || new Date().toISOString().split('T')[0];
+            document.getElementById('delta').value = document.getElementById('delta').innerHTML || '5';
+            document.getElementById('years_to_get_history').value = document.getElementById('years_to_get_history').innerHTML || '24';
+            document.getElementById('units').value = document.getElementById('units').innerHTML || 'metric';
+            await start();
+            initializeWidget();
+        };
+    </script>
 </body>
 </html>
