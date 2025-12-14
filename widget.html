@@ -53,10 +53,21 @@
             gap: 24px;
         }
 
+        .date-section {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
         @media (max-width: 768px) {
             .header {
                 flex-direction: column;
                 gap: 20px;
+            }
+            
+            .date-section {
+                width: 100%;
+                order: 2;
             }
             
             .weirdther-today {
@@ -66,11 +77,13 @@
             .current-weather {
                 width: 100%;
                 justify-content: center;
+                order: 3;
             }
             
             .location-info {
                 width: 100%;
                 text-align: center !important;
+                order: 1;
             }
         }
 
@@ -125,10 +138,10 @@
         }
 
         .selected-day {
-            font-size: 14px;
-            opacity: 0.7;
-            margin-bottom: 4px;
-            font-weight: 500;
+            font-size: 18px;
+            opacity: 0.9;
+            font-weight: 600;
+            text-align: left;
         }
 
         .current-weather {
@@ -147,7 +160,7 @@
             padding: 16px 24px;
             background: rgba(255, 255, 255, 0.12);
             border-radius: 16px;
-            text-align: center;
+            text-align: left;
             flex-shrink: 0;
         }
 
@@ -415,6 +428,10 @@
                 font-size: 56px;
             }
             
+            .weirdther-today {
+                text-align: center;
+            }
+
             .weirdther-today-value {
                 font-size: 48px;
             }
@@ -426,6 +443,7 @@
             
             .selected-day {
                 font-size: 18px;
+                text-align: center;
             }
             
             .location-input {
@@ -468,9 +486,12 @@
         <div id="loading" class="loading">Loading weather data...</div>
         <div id="widget-content" style="display: none;">
             <div class="header">
-                <div class="weirdther-today">
-                    <div class="weirdther-today-label">Weirdther score</div>
-                    <div class="weirdther-today-value" id="currentWeirdther">--</div>
+                <div class="date-section">
+                    <div class="selected-day" id="selectedDay">Today</div>
+                    <div class="weirdther-today">
+                        <div class="weirdther-today-label">Weirdther score</div>
+                        <div class="weirdther-today-value" id="currentWeirdther">--</div>
+                    </div>
                 </div>
                 <div class="current-weather">
                     <div class="weather-icon" id="weatherIcon">🌤️</div>
@@ -483,7 +504,6 @@
                     </div>
                 </div>
                 <div class="location-info">
-                    <div class="selected-day" id="selectedDay">Today</div>
                     <input type="text" 
                            id="locationInput" 
                            class="location-input"
