@@ -132,6 +132,25 @@
             margin-bottom: 8px;
         }
 
+        .detailed-link {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            transition: all 0.2s ease;
+            display: inline-block;
+            padding: 4px 8px;
+            margin-top: 10px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .detailed-link:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
         .condition {
             font-size: 18px;
             opacity: 0.8;
@@ -491,6 +510,9 @@
                     <div class="weirdther-today">
                         <div class="weirdther-today-label">Weirdther score</div>
                         <div class="weirdther-today-value" id="currentWeirdther">--</div>
+                        <div>
+                            <a href="#" id="detailedLink" class="detailed-link" style="display:none;">Details</a>
+                        </div>
                     </div>
                 </div>
                 <div class="current-weather">
@@ -594,6 +616,9 @@
             document.getElementById('longitude').textContent = `${Math.abs(data.parameters.longitude)}°${data.parameters.longitude < 0 ? 'W' : 'E'}`;
             document.getElementById('condition').textContent = getConditionText(data.results["Selected day"]);
 
+            // Update detailed view link with current parameters
+            updateDetailedLink();
+
             // Hide loading, show content
             document.getElementById('loading').style.display = 'none';
             document.getElementById('widget-content').style.display = 'block';
@@ -603,6 +628,29 @@
             
             // Initialize with today's data
             showDetails(0);
+        }
+
+        function updateDetailedLink() {
+            const params = new URLSearchParams();
+            
+            // Get values from the widget data if available
+            if (window.widgetData) {
+                const data = window.widgetData.parameters;
+                
+                if (data.location) params.append('location', data.location);
+                if (data.latitude) params.append('latitude', data.latitude);
+                if (data.longitude) params.append('longitude', data.longitude);
+                if (data.date) params.append('date', data.date);
+                if (data.delta) params.append('delta', data.delta);
+                if (data.years_to_get_history) params.append('years_to_get_history', data.years_to_get_history);
+                if (data.units) params.append('units', data.units);
+            }
+            
+            // Build URL and update link
+            const detailedUrl = `detailed.html?${params.toString()}`;
+            const detailedLink = document.getElementById('detailedLink');
+            detailedLink.href = detailedUrl;
+            detailedLink.style.display = 'inline-block';
         }
 
         function getConditionText(dayData) {
