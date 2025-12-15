@@ -162,7 +162,11 @@ async function getWeather(){
     }
     
     if (document.getElementById("latitude").value == "" || document.getElementById("longitude").value == "") {
+        if (document.getElementById("loading"))
+            document.getElementById("loading").innerHTML = "Location not found";
         document.getElementById("summary").innerHTML = "Location not found";
+        // set widget data to null
+        window.widgetData = null;
         return;
     }
 
