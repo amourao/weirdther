@@ -132,6 +132,46 @@
             margin-bottom: 8px;
         }
 
+        .unit-selector {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            margin-bottom: 12px;
+            justify-content: flex-end;
+        }
+
+        .unit-button {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            padding: 4px 12px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .unit-button:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.25);
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .unit-button.active {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+            color: white;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .unit-selector {
+                justify-content: center;
+            }
+        }
+
         .detailed-link {
             font-size: 13px;
             color: rgba(255, 255, 255, 0.7);
@@ -526,6 +566,10 @@
                     </div>
                 </div>
                 <div class="location-info">
+                    <div class="unit-selector">
+                        <button class="unit-button" id="metricBtn" onclick="switchUnit('metric')">Metric</button>
+                        <button class="unit-button" id="imperialBtn" onclick="switchUnit('imperial')">Imperial</button>
+                    </div>
                     <input type="text" 
                            id="locationInput" 
                            class="location-input"
@@ -725,8 +769,8 @@
                 let precipString = '';
                 if (rain > 0 || snow > 0) {
                     const parts = [];
-                    if (rain > 0) parts.push(`💧 ${rain.toFixed(1)}mm`);
-                    if (snow > 0) parts.push(`❄️ ${snow.toFixed(1)}cm`);
+                    if (rain > 0) parts.push(`💧 ${rain.toFixed(1)}${FRIENDLY_NAMES["rain_sum"][getDefaultUnit()+"_short"]}`);
+                    if (snow > 0) parts.push(`❄️ ${snow.toFixed(1)}${FRIENDLY_NAMES["snowfall_sum"][getDefaultUnit()+"_short"]}`);
                     precipString = parts.join(' ');
                 }
 
@@ -860,15 +904,15 @@
             // Update metrics
             const currentMetrics = document.getElementById('currentMetrics');
             let metricsHTML = `
-                <div class="metric-item">💧 ${rain.toFixed(1)}mm</div>
+                <div class="metric-item">💧 ${rain.toFixed(1)}${FRIENDLY_NAMES["rain_sum"][getDefaultUnit()+"_short"]}</div>
             `;
             
             if (snow > 0) {
-                metricsHTML += `<div class="metric-item">❄️ ${snow.toFixed(1)}cm</div>`;
+                metricsHTML += `<div class="metric-item">❄️ ${snow.toFixed(1)}${FRIENDLY_NAMES["snowfall_sum"][getDefaultUnit()+"_short"]}</div>`;
             }
             
             metricsHTML += `
-                <div class="metric-item">💨 ${Math.round(wind)}km/h</div>
+                <div class="metric-item">💨 ${Math.round(wind)}${FRIENDLY_NAMES["wind_speed_10m_max"][getDefaultUnit()+"_short"]}</div>
                 <div class="metric-item">☀️ ${Math.round(sunshine * 100)}%</div>
             `;
             
@@ -886,8 +930,8 @@
 
         function getConditionFromData(rain, snow, sunshine) {
             if (snow > 0) return 'Snowy';
-            if (rain > 20) return 'Rainy';
-            if (rain > 0 && rain < 5) return 'Light Rain';
+            if (rain > 5) return 'Rainy';
+            if (rain > 0) return 'Light Rain';
             if (sunshine > 0.7) return 'Sunny';
             if (sunshine > 0.3) return 'Partly Cloudy';
             return 'Cloudy';
@@ -918,13 +962,71 @@
             }
         }
 
+        function getDefaultUnit() {
+            // check if unit is in localStorage 
+            const storedUnit = localStorage.getItem('unit');
+            if (storedUnit) {
+                return storedUnit;
+            }
+            if (document.getElementById("units") && document.getElementById("units").value) {
+                return document.getElementById("units").value;
+            }
+            const locale = navigator.language || navigator.userLanguage || "-";
+            const country = locale.split('-')[1] || locale;
+            const imperialCountries = ['US', 'LR', 'MM'];
+            const unit = imperialCountries.includes(country.toUpperCase()) ? 'imperial' : 'metric';
+            console.log("Detected locale:", locale, "Country:", country, "Using unit:", unit);
+            return unit;
+        }
+
+        function setDefaultUnit(unit) {
+            localStorage.setItem('unit', unit);
+        }
+
+        function switchUnit(unit) {
+            // Save the preference
+            setDefaultUnit(unit);
+            
+            // Update the hidden field
+            document.getElementById('units').value = unit;
+            
+            // Update button states
+            updateUnitButtons();
+            
+            // Reload weather data with new units
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('widget-content').style.display = 'none';
+            getWeather();
+        }
+
+        function updateUnitButtons() {
+            const currentUnit = getDefaultUnit();
+            const metricBtn = document.getElementById('metricBtn');
+            const imperialBtn = document.getElementById('imperialBtn');
+            
+            if (currentUnit === 'metric') {
+                metricBtn.classList.add('active');
+                imperialBtn.classList.remove('active');
+            } else {
+                imperialBtn.classList.add('active');
+                metricBtn.classList.remove('active');
+            }
+
+        }
+
         window.onload = async function() {
+            // Get the default unit (from localStorage or locale detection)
+            const defaultUnit = getDefaultUnit();
             
             // set default parameters for hidden fields
             document.getElementById('date').value = document.getElementById('date').innerHTML || new Date().toISOString().split('T')[0];
             document.getElementById('delta').value = document.getElementById('delta').innerHTML || '5';
             document.getElementById('years_to_get_history').value = document.getElementById('years_to_get_history').innerHTML || '24';
-            document.getElementById('units').value = document.getElementById('units').innerHTML || 'metric';
+            document.getElementById('units').value = defaultUnit;
+            
+            // Update button states
+            updateUnitButtons();
+            
             await start();
             initializeWidget();
         };

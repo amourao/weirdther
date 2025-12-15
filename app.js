@@ -71,7 +71,7 @@ const FRIENDLY_NAMES = {
 
 const VARS_TO_GET_HOURLY = "";
 const METRIC="";
-const IMPERIAL="temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch"
+const IMPERIAL="temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
 
 const DATA_PATH = "data";
 const SEPARATOR = "&nbsp;";
@@ -87,6 +87,28 @@ var SELF_LINK = null;
 
 var LINEAR_SCALE = true;
 
+function getDefaultUnit() {
+    // check if unit is in localStorage 
+    const storedUnit = localStorage.getItem('unit');
+    if (storedUnit) {
+        return storedUnit;
+    }
+    if (document.getElementById("units") && document.getElementById("units").value) {
+        return document.getElementById("units").value;
+    }
+    const locale = navigator.language || navigator.userLanguage || "-";
+    const country = locale.split('-')[1] || locale;
+    const imperialCountries = ['US', 'LR', 'MM'];
+    const unit = imperialCountries.includes(country.toUpperCase()) ? 'imperial' : 'metric';
+    console.log("Detected locale:", locale, "Country:", country, "Using unit:", unit);
+    return unit;
+}
+
+function setDefaultUnit(unit) {
+    localStorage.setItem('unit', unit);
+}
+
+
 async function start() {
     isWidget = true;
     document.getElementById("date").value = new Date().toISOString().slice(0, 10);
@@ -98,6 +120,7 @@ async function start() {
     const date = urlParams.get('date');
     const delta = urlParams.get('delta');
     const years_to_get_history = urlParams.get('years_to_get_history');
+    const units = urlParams.get('units');
     if (latitude && longitude) {
         document.getElementById("latitude").value = latitude;
         document.getElementById("longitude").value = longitude;
@@ -114,6 +137,9 @@ async function start() {
     }
     if (years_to_get_history) {
         document.getElementById("years_to_get_history").value = years_to_get_history;
+    }
+    if (units) {
+        document.getElementById("units").value = units;
     }
 
     if (((!latitude || !longitude)  && !location) && navigator.geolocation) {
@@ -226,7 +252,7 @@ async function getWeather(){
         url.searchParams.set('delta', delta);
     if (years_to_get_history && years_to_get_history != DEFAULT_YEARS_TO_GET_HISTORY)
         url.searchParams.set('years_to_get_history', years_to_get_history);
-    if (units && units != "metric")
+    if (units && units != getDefaultUnit())
         url.searchParams.set('units', units);
 
     shareUrl = url.toString();
