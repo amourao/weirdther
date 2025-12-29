@@ -508,15 +508,25 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     }
 
     // starting day of the year
-    var start_day_of_year = daysIntoYear(new Date(current_series_days[0])) - delta;
+    var start_day_of_year = daysIntoYear(new Date(current_series_days[0])) - parseInt(delta);
     // ending day of the year
-    var end_day_of_year = daysIntoYear(new Date(current_series_days[current_series_days.length-1])) + delta;
+    var end_day_of_year = daysIntoYear(new Date(current_series_days[current_series_days.length-1])) ;
+    end_day_of_year += parseInt(delta);
     var friendly_name = FRIENDLY_NAMES[var_name]["name"];
     // sort data_days and data by the order of data 
     var combined = data_days.map((e, i) => [e, data[i]]);
     // add current series and current series days to combined
     combined = combined.concat(current_series_days.map((e, i) => [e, current_series[i]]));
-    combined = combined.filter((e) => daysIntoYear(new Date(e[0])) >= start_day_of_year && daysIntoYear(new Date(e[0])) <= end_day_of_year && new Date(e[0]) < new Date(current_series_days[current_series_days.length-1])).sort((a, b) => parseFloat(a[1]) - parseFloat(b[1]));
+    combined = combined.filter((e) => function() {
+
+        var day_of_year = daysIntoYear(new Date(e[0]));
+        if (end_day_of_year >= start_day_of_year) {
+            return day_of_year >= start_day_of_year && day_of_year <= end_day_of_year;
+        } else {
+            return day_of_year >= start_day_of_year || day_of_year <= end_day_of_year;
+        }
+    }() && new Date(e[0]) < new Date(current_series_days[current_series_days.length-1])
+    ).sort((a, b) => parseFloat(a[1]) - parseFloat(b[1]));
     data_days = combined.map((e) => e[0]);
     data = combined.map((e) => e[1]);
 
