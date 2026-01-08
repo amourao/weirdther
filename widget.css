@@ -1,0 +1,532 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.widget-container {
+    background: rgba(0, 0, 0, 0.85);
+    border-radius: 24px;
+    padding: 32px;
+    max-width: 1200px;
+    width: 100%;
+    color: white;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 768px) {
+    .widget-container {
+        padding: 20px;
+        border-radius: 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .widget-container {
+        padding: 16px;
+    }
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+    gap: 24px;
+}
+
+.date-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+@media (max-width: 768px) {
+    .header {
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .date-section {
+        width: 100%;
+        order: 2;
+    }
+    
+    .weirdther-today {
+        width: 100%;
+    }
+    
+    .current-weather {
+        width: 100%;
+        justify-content: center;
+        order: 3;
+    }
+    
+    .location-info {
+        width: 100%;
+        text-align: center !important;
+        order: 1;
+    }
+}
+
+.location-info {
+    text-align: right;
+}
+
+.location {
+    font-size: 32px;
+    font-weight: 300;
+    margin-bottom: 4px;
+}
+
+.location-input {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    padding: 6px 12px;
+    color: white;
+    font-size: 32px;
+    font-weight: 300;
+    text-align: right;
+    margin-bottom: 4px;
+    width: 100%;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.location-input:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+.location-input:focus {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.location-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.coordinates {
+    font-size: 13px;
+    opacity: 0.6;
+    margin-bottom: 8px;
+}
+
+.unit-selector {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    margin-bottom: 12px;
+    justify-content: flex-end;
+}
+
+.unit-button {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    padding: 4px 12px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.unit-button:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.unit-button.active {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+    color: white;
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .unit-selector {
+        justify-content: center;
+    }
+}
+
+.detailed-link {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    display: inline-block;
+    padding: 4px 8px;
+    margin-top: 10px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.detailed-link:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.condition {
+    font-size: 18px;
+    opacity: 0.8;
+}
+
+.selected-day {
+    font-size: 22px;
+    opacity: 0.9;
+    font-weight: 600;
+    text-align: left;
+}
+
+.current-weather {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex: 1;
+}
+
+.weather-icon {
+    font-size: 64px;
+}
+
+
+.weirdther-today {
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    text-align: left;
+    flex-shrink: 0;
+}
+
+.weirdther-today-label {
+    font-size: 11px;
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.weirdther-today-value {
+    font-size: 56px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.current-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px 20px;
+    margin-top: 12px;
+    font-size: 16px;
+    opacity: 0.9;
+}
+
+.metric-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.forecast-section {
+    margin-top: 32px;
+}
+
+.section-title {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: 0.6;
+    margin-bottom: 16px;
+}
+
+.forecast-grid {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 16px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.forecast-grid::-webkit-scrollbar {
+    height: 8px;
+}
+
+.forecast-grid::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.forecast-grid::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+
+.forecast-grid::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.forecast-card {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 20px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    min-width: 180px;
+    max-width: 200px;
+    flex-shrink: 0;
+    scroll-snap-align: start;
+}
+
+@media (max-width: 480px) {
+    .forecast-card {
+        min-width: 150px;
+        max-width: 170px;
+        padding: 16px;
+    }
+}
+
+.forecast-card:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-4px);
+}
+
+.forecast-card.active {
+    background: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+}
+
+.forecast-card.high-weird {
+    border: 2px solid #ff6b6b;
+}
+
+.forecast-card.low-weird {
+    border: 2px solid #4ecdc4;
+}
+
+.forecast-card.moderate-weird {
+    border: 2px solid #ffa502;
+}
+
+    .forecast-card.extreme-weird {
+    border: 2px solid #ff4757;
+}
+
+.weird-badge {
+    background: #ff6b6b;
+    padding: 4px 8px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.forecast-card.low-weird .weird-badge {
+    background: #4ecdc4;
+}
+
+.forecast-card.moderate-weird .weird-badge {
+    background: #ffa502;
+}
+
+.forecast-card.extreme-weird .weird-badge {
+    background: #ff4757;
+}
+
+.forecast-date {
+    font-size: 14px;
+    opacity: 0.8;
+    margin-bottom: 12px;
+}
+
+.forecast-temps {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.forecast-temp-high {
+    font-size: 28px;
+    font-weight: 500;
+}
+
+.forecast-temp-low {
+    font-size: 20px;
+    opacity: 0.6;
+}
+
+.forecast-icon {
+    font-size: 40px;
+    margin-bottom: 8px;
+}
+
+.percentile-bars {
+    margin-top: 12px;
+}
+
+.percentile-item {
+    margin-bottom: 8px;
+}
+
+.percentile-label {
+    font-size: 11px;
+    opacity: 0.7;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.percentile-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    overflow: visible;
+    position: relative;
+}
+
+.percentile-bar-center {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.4);
+    z-index: 1;
+}
+
+.percentile-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: all 0.5s ease;
+    position: absolute;
+    top: 0;
+}
+
+.percentile-fill.above-median {
+    background: linear-gradient(90deg, rgba(255, 107, 107, 0.5), rgba(255, 69, 0, 0.8), #ff4500);
+    left: 50%;
+}
+
+.percentile-fill.below-median {
+    background: linear-gradient(90deg, #1e90ff, rgba(30, 144, 255, 0.8), rgba(100, 149, 237, 0.5));
+    right: 50%;
+}
+
+.rain-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    margin-top: 8px;
+    opacity: 0.8;
+    min-height: 20px;
+    flex-wrap: wrap;
+}
+
+.weirdther-score {
+    margin-top: 16px;
+    padding: 16px 12px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    text-align: center;
+}
+
+.weirdther-label {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.weirdther-value {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    font-size: 18px;
+}
+
+@media (max-width: 768px) {
+    
+    .weather-icon {
+        font-size: 56px;
+    }
+    
+    .weirdther-today {
+        text-align: center;
+    }
+
+    .weirdther-today-value {
+        font-size: 48px;
+    }
+    
+    .current-metrics {
+        font-size: 15px;
+        gap: 10px 16px;
+    }
+    
+    .selected-day {
+        font-size: 18px;
+        text-align: center;
+    }
+    
+    .location-input {
+        text-align: center;
+    }
+}
+
+@media (max-width: 480px) {
+    
+    .weather-icon {
+        font-size: 48px;
+    }
+    
+    .weirdther-today-value {
+        font-size: 42px;
+    }
+    
+    .current-metrics {
+        font-size: 14px;
+        gap: 8px 12px;
+        grid-template-columns: 1fr;
+    }
+    
+    .location-input {
+        font-size: 24px;
+    }
+    
+    .selected-day {
+        font-size: 16px;
+    }
+    
+    .section-title {
+        font-size: 12px;
+    }
+}
