@@ -587,10 +587,10 @@
                 </div>
                 <div id="date" style="display:none;"></div>
                 <div id="delta" style="display:none;"></div>
-                <div id="years_to_get_history" style="display:none;"></div>
                 <div id="units" style="display:none;"></div>
                 <div id="summary" style="display:none;"></div>
                 <div id="chart" style="display:none;"></div>
+                <div id="climate_normal" style="display:none;"></div>
             </div>
 
             <div class="forecast-section">
@@ -614,9 +614,9 @@
         };
 
         function getWeatherIcon(rain, snow, sunshine) {
-            if (snow > 0) return '❄️';
-            if (rain > 20) return '🌧️';
-            if (rain > 5) return '🌦️';
+            if (snow > 0.2) return '🌨';
+            if (rain > 5) return '🌧️';
+            if (rain > 0.2) return '🌦️';
             if (sunshine > 0.8) return '☀️';
             if (sunshine > 0.66) return '🌤️';
             if (sunshine > 0.33) return '⛅';
@@ -686,7 +686,6 @@
                 if (data.longitude) params.append('longitude', data.longitude);
                 if (data.date) params.append('date', data.date);
                 if (data.delta) params.append('delta', data.delta);
-                if (data.years_to_get_history) params.append('years_to_get_history', data.years_to_get_history);
                 if (data.units) params.append('units', data.units);
             }
             
@@ -1021,7 +1020,6 @@
             // set default parameters for hidden fields
             document.getElementById('date').value = document.getElementById('date').innerHTML || new Date().toISOString().split('T')[0];
             document.getElementById('delta').value = document.getElementById('delta').innerHTML || '5';
-            document.getElementById('years_to_get_history').value = document.getElementById('years_to_get_history').innerHTML || '24';
             document.getElementById('units').value = defaultUnit;
             
             // Update button states

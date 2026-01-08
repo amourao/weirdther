@@ -81,7 +81,16 @@ const SYMBOLS_RAW = ["#", "B", "S", "A"];
 const SYMBOLS = SYMBOLS_RAW.map((x, i) => `<a href='###'><font title='%%%' color='${COLORS[i]}'>${x}</font></a>`);
 const COLUMN_WIDTH = 3;
 const DEFAULT_DELTA = 5;
-const DEFAULT_YEARS_TO_GET_HISTORY = 24;
+
+const CLIMATE_NORMALS = [
+    {"start": 2001, "end": 2030},
+    {"start": 1991, "end": 2020},
+    {"start": 1981, "end": 2010},
+    {"start": 1971, "end": 2000},
+];
+
+const DEFAULT_CLIMATE_NORMALS_INDEX = 0;
+
 var SELF_LINK = null;
 
 
@@ -119,8 +128,9 @@ async function start() {
     const location = urlParams.get('location');
     const date = urlParams.get('date');
     const delta = urlParams.get('delta');
-    const years_to_get_history = urlParams.get('years_to_get_history');
     const units = urlParams.get('units');
+    const climateNormal = urlParams.get('climate_normal');
+    
     if (latitude && longitude) {
         document.getElementById("latitude").value = latitude;
         document.getElementById("longitude").value = longitude;
@@ -135,11 +145,12 @@ async function start() {
     if (delta) {
         document.getElementById("delta").value = delta;
     }
-    if (years_to_get_history) {
-        document.getElementById("years_to_get_history").value = years_to_get_history;
-    }
     if (units) {
         document.getElementById("units").value = units;
+    }
+
+    if (climateNormal) {
+        document.getElementById("climate_normal").value = climateNormal;
     }
 
     if (((!latitude || !longitude)  && !location) && navigator.geolocation) {
@@ -222,7 +233,6 @@ async function getWeather(){
         document.getElementById("date").value = dateString;
     }
     const delta = document.getElementById("delta").value;
-    const years_to_get_history = document.getElementById("years_to_get_history").value;
 
     const units = document.getElementById("units").value;
 
@@ -240,6 +250,8 @@ async function getWeather(){
     // update URL
     const url = new URL(window.location.href);
 
+    const climateNormalIndex = parseInt(document.getElementById("climate_normal").value) || DEFAULT_CLIMATE_NORMALS_INDEX;
+
     if (location == "Using coordinates") {
         url.searchParams.set('latitude', latitude);
         url.searchParams.set('longitude', longitude);
@@ -248,12 +260,23 @@ async function getWeather(){
     } 
     if (dateString != new Date().toISOString().slice(0, 10))
         url.searchParams.set('date', dateString);
+    else
+        url.searchParams.delete('date');
+
     if (delta && delta != DEFAULT_DELTA)
         url.searchParams.set('delta', delta);
-    if (years_to_get_history && years_to_get_history != DEFAULT_YEARS_TO_GET_HISTORY)
-        url.searchParams.set('years_to_get_history', years_to_get_history);
+    else
+        url.searchParams.delete('delta');
+
     if (units && units != getDefaultUnit())
         url.searchParams.set('units', units);
+    else
+        url.searchParams.delete('units');
+
+    if (climateNormalIndex && climateNormalIndex != DEFAULT_CLIMATE_NORMALS_INDEX)
+        url.searchParams.set('climate_normal', climateNormalIndex);
+    else
+        url.searchParams.delete('climate_normal');
 
     shareUrl = url.toString();
     if (shareUrl != window.location.href) {
@@ -292,7 +315,10 @@ async function getWeather(){
     const parsedData = splitPastPresentFuture(current, date, delta);
     current = parsedData;
 
-    const historical = await getHistoricalWeather([latitude, longitude], date, delta, years_to_get_history, units);
+    const start_year = CLIMATE_NORMALS[climateNormalIndex]["start"];
+    const end_year = CLIMATE_NORMALS[climateNormalIndex]["end"];
+
+    const historical = await getHistoricalWeather([latitude, longitude], date, delta, start_year, end_year, units);
     const historical_grouped = groupByValue(historical);
     const historical_histogram = createHistogram(historical);
     const current_histograms = [...historical_histogram];
@@ -343,7 +369,7 @@ async function getWeather(){
             if (varName == "time") {
                 continue;
             }
-            const datas = friendlyStats(historical_grouped[varName], historical_grouped["time"], current[info[1]]["daily"][varName], current[info[1]]["daily"]["time"], varName, units, delta);
+            const datas = friendlyStats(historical_grouped[varName], historical_grouped["time"], current[info[1]]["daily"][varName], current[info[1]]["daily"]["time"], varName, units, delta, info[1], CLIMATE_NORMALS[climateNormalIndex]);
             if (datas.length == 0) {
                 delete response["results"][info[0]][varName];
                 continue;
@@ -362,6 +388,13 @@ async function getWeather(){
         }
         for (var i = 0; i < score.length; i++) {
             score[i] = score[i] / scoreSum[i] * 100;
+            if (score[i] == 100) {
+                score[i] = 99.9;
+            }
+            if (score[i] > 100) {
+                score[i] = 100;
+            }
+
         }
 
         response["results"][info[0]]["weirdther_score"] = score;
@@ -391,7 +424,7 @@ async function getWeather(){
             scoreText += " (what you tell your grandkids about";
         }
 
-        const message = generateOnceEveryXDays(maxPercentile);
+        const message = generateOnceEveryXDays(maxPercentile, CLIMATE_NORMALS[climateNormalIndex]);
         scoreText += message + ")";
 
         document.getElementById('summary').innerHTML += "<b>Weirdther Score:</b> " + scoreText + "<ul>" + text + "</ul>";
@@ -419,15 +452,18 @@ function findPercentileForValue(data, value) {
     // find first index greater than value
     var firstIndex = data.findIndex((x) => x >= value);
     var lastIndex = data.findIndex((x) => x > value);
-
+    console.log("Value:", value, "First index:", firstIndex, "Last index:", lastIndex);
     if (firstIndex === -1 && lastIndex === -1) {
-        return [1, firstIndex, lastIndex];
+        return [1.01, firstIndex, lastIndex];
     }
-    if (firstIndex === -1) {
+    if (firstIndex === -1 || (firstIndex === 0 && lastIndex === 0)) {
+        return [-0.01, firstIndex, lastIndex];
+    }
+    if (firstIndex === 0 && lastIndex === 1) {
         return [0, firstIndex, lastIndex];
     }
     if (lastIndex === -1) {
-        return [0.999, firstIndex, lastIndex];
+        return [1, firstIndex, lastIndex];
     }
     if (firstIndex <= data.length/2 && lastIndex >= data.length/2) {
         return [0.5, firstIndex, lastIndex];
@@ -488,7 +524,7 @@ function daysIntoYear(date){
     return (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(date.getFullYear(), 0, 0)) / 24 / 60 / 60 / 1000;
 }
 
-function friendlyStats(data, data_days, current_series, current_series_days, var_name, unit_type, delta) {
+function friendlyStats(data, data_days, current_series, current_series_days, var_name, unit_type, delta, type, climateNormal) {
     // deep copy data
     data = data.slice();
     data_days = data_days.slice();
@@ -507,6 +543,17 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
         decimalPlaces = 0;
     }
 
+    // today + 16 days
+
+    var last_day_with_data = new Date();
+    if (type == 0) {
+        last_day_with_data.setDate(last_day_with_data.getDate() + 16);
+    } else if (type == 1) {
+        last_day_with_data = new Date(current_series_days[current_series_days.length-1]);
+    } else if (type == 2) {
+        last_day_with_data.setDate(last_day_with_data.getDate() + 16);
+    }
+
     // starting day of the year
     var start_day_of_year = daysIntoYear(new Date(current_series_days[0])) - parseInt(delta);
     // ending day of the year
@@ -516,16 +563,16 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     // sort data_days and data by the order of data 
     var combined = data_days.map((e, i) => [e, data[i]]);
     // add current series and current series days to combined
-    combined = combined.concat(current_series_days.map((e, i) => [e, current_series[i]]));
-    combined = combined.filter((e) => function() {
 
+    combined = combined.filter((e) => function() {
         var day_of_year = daysIntoYear(new Date(e[0]));
         if (end_day_of_year >= start_day_of_year) {
             return day_of_year >= start_day_of_year && day_of_year <= end_day_of_year;
         } else {
             return day_of_year >= start_day_of_year || day_of_year <= end_day_of_year;
         }
-    }() && new Date(e[0]) < new Date(current_series_days[current_series_days.length-1])
+    }() && new Date(e[0]).getFullYear() >= climateNormal.start 
+        && new Date(e[0]).getFullYear() <= climateNormal.end 
     ).sort((a, b) => parseFloat(a[1]) - parseFloat(b[1]));
     data_days = combined.map((e) => e[0]);
     data = combined.map((e) => e[1]);
@@ -579,6 +626,7 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
 
     var gradient = generateSpan(current_series, current_series_days, data, data_days, var_name, unit_type);
 
+    console.log(climateNormal);
 
     var qualifier = "";
     var boldStart = "";
@@ -591,12 +639,20 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     } else if (series_percentile[1] == 0 && series_percentile[2] == -1) {
         // return [`<b>${friendly_name}:</b> Not expected this time of year.`, scores, scoresSum, gradient];
         return []
+    } else if (series_percentile[0] < 0) {
+        qualifier = "below the minimum value recorded for the time period (" + climateNormal.start + "-" + climateNormal.end + ")!"; 
+        boldStart = "<b style='color:blue'>";
+        boldEnd = "</b>";
     } else if (series_percentile[0] == 0) {
-        qualifier = "the minimum value recorded for the time period!";
+        qualifier = "the minimum value recorded for the time period (" + climateNormal.start + "-" + climateNormal.end + ")!";
         boldStart = "<b style='color:blue'>";
         boldEnd = "</b>";
     } else if (series_percentile[0] == 1) {
-        qualifier = "the maximum value recorded for the time period!";
+        qualifier = "the maximum value recorded for the time period (" + climateNormal.start + "-" + climateNormal.end + ")!";
+        boldStart = "<b style='color:red'>";
+        boldEnd = "</b>";  
+    } else if (series_percentile[0] > 1) {
+        qualifier = "above the maximum value recorded for the time period (" + climateNormal.start + "-" + climateNormal.end + ")!";
         boldStart = "<b style='color:red'>";
         boldEnd = "</b>";  
     } else if (series_percentile[0] < 0.05) {
@@ -604,25 +660,25 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
         boldStart = "<b>";
         boldEnd = "</b>";
         topOrBottom = "Bottom " + percentilePretty;
-        noteDays = generateOnceEveryXDays(series_percentile[0]);
+        noteDays = generateOnceEveryXDays(series_percentile[0], climateNormal);
     } else if (series_percentile[0] > 0.95) {
         qualifier = "significantly " + FRIENDLY_NAMES[var_name]["higher"] + " than usual."
         boldStart = "<b>";
         boldEnd = "</b>";
         topOrBottom = "Top " + percentilePretty;
-        noteDays = generateOnceEveryXDays(series_percentile[0]);
+        noteDays = generateOnceEveryXDays(series_percentile[0], climateNormal);
     } else if (series_percentile[0] < 0.25) {
         qualifier = FRIENDLY_NAMES[var_name]["lower"] + " than usual.";
         boldStart = "<b>";
         boldEnd = "</b>";
         topOrBottom = "Bottom " + percentilePretty;
-        noteDays = generateOnceEveryXDays(series_percentile[0]);
+        noteDays = generateOnceEveryXDays(series_percentile[0], climateNormal);
     } else if (series_percentile[0] > 0.75) {
         qualifier = FRIENDLY_NAMES[var_name]["higher"] + " than usual.";
         boldStart = "<b>";
         boldEnd = "</b>";
         topOrBottom = "Top " + percentilePretty;
-        noteDays = generateOnceEveryXDays(series_percentile[0]);
+        noteDays = generateOnceEveryXDays(series_percentile[0], climateNormal);
     }  else {
         qualifier = "close to what is expected.";
     }
@@ -801,7 +857,7 @@ async function getHistoricalWeatherCurrent(location, current_date = new Date(), 
 }
 
 
-async function getHistoricalWeather(location, current_date = new Date(), delta = DEFAULT_DELTA, years = DEFAULT_YEARS_TO_GET_HISTORY, unitsType = "metric") {
+async function getHistoricalWeather(location, current_date = new Date(), delta = DEFAULT_DELTA, start_year = "2001", end_year = "2030", unitsType = "metric") {
     // format location to two decimal places
     var unitString = METRIC
     if (unitsType === "imperial") {
@@ -811,8 +867,11 @@ async function getHistoricalWeather(location, current_date = new Date(), delta =
     location = [location[0].toFixed(2), location[1].toFixed(2)];
     const datas = [];
     var current_date_to = new Date(current_date);
-    for (let i = 0; i < years; i++) {
-
+    for (let i = start_year; i < end_year; i++) {
+        current_date_to.setFullYear(i);
+        if (i > new Date().getFullYear()) {
+            continue;
+        }
         const start = new Date(current_date_to.getTime() - delta * 24 * 60 * 60 * 1000);
         const end = new Date(current_date_to.getTime() + delta * 24 * 60 * 60 * 1000);        
         await getWeatherData(start, end, location, unitsType, unitString).then((data) => {
@@ -820,12 +879,6 @@ async function getHistoricalWeather(location, current_date = new Date(), delta =
                 datas.push(data);
             }
         });
-
-        if ((current_date_to.getFullYear() % 4 === 0 && current_date_to.getFullYear() % 100 !== 0) || current_date_to.getFullYear() % 400 === 0) {
-            current_date_to.setDate(current_date_to.getDate() - 366);
-        } else {
-            current_date_to.setDate(current_date_to.getDate() - 365);
-        }
     }
     return datas;
 }
@@ -1013,6 +1066,19 @@ function createAsciiChart(name, groupedData, currentVal, currentDate, historical
         symbols[sortedHistoricalDataKeys[i]] = [];
         values[sortedHistoricalDataKeys[i]] = [];
         var internalMax = 0;
+        foundDates = {};
+        for (var j = varValues.length-1; j >= 0; j--) {
+            for (var k = 0; k < varValues[j].length; k++) {
+                if (varValues[j][k] in foundDates) {
+                    // remove this date from varValues[j]
+                    varValues[j].splice(k, 1);
+                    k--;
+                } else {
+                    foundDates[varValues[j][k]] = true;
+                }
+            }
+        }
+        console.log("VarValues for " + sortedHistoricalDataKeys[i] + ": " + JSON.stringify(varValues));
         for (var j = 0; j < varValues.length; j++) {
             internalMax += varValues[j].length;
             // repeat symbol into array
@@ -1037,7 +1103,6 @@ function createAsciiChart(name, groupedData, currentVal, currentDate, historical
         
         for (let varName in sortedHistoricalDataKeys) {
             var varValues = sortedHistoricalDataKeys[varName];
-           
             if (i <= maxValues[varValues]) {
                 var value = values[varValues][i-1];
                 var url = SELF_LINK
@@ -1173,24 +1238,25 @@ function generateSpan(current_series, current_series_days, historical_stats, his
     return `<div style="padding: 10px;  width: 100%; display: inline-block;">` + textBarTopTop + "\n" + textBarTop + "\n" +bar + "\n" + textBar + "\n" + textBarBottom + "</div>";  
 }
 
-function generateOnceEveryXDays(percentile) {
+function generateOnceEveryXDays(percentile, climateNormal) {
     let percentilePretty = 1-(Math.abs(0.5-percentile))*2; 
     const days = Math.round(1/percentilePretty);
-    var start = ", should happen ";
+    if (percentile < 0 || percentile > 1) {
+        return ", never happened between " + climateNormal.start + " and " + climateNormal.end + "!";
+    }
     if (days === 1) {
-        return start + "every other day";
+        return ", should happen every other day";
     }
     if (days === 7) {
-        return start + "once per week";
+        return ", should happen once per week";
     }
     if (days === 30) {
-        return start + "once per month";
+        return ", should happen once per month";
     }
     if (isNaN(days) || !isFinite(days)) {
-        return ", never happened before!";
+        return ", happened once between " + climateNormal.start + " and " + climateNormal.end + "!";
     }
-    return start + `once every ${days} days`;
-    
+    return `, should happen once every ${days} days`;    
 }
 
 function calculateDaylightCorrectionFactor(day) {
