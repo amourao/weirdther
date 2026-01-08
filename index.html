@@ -661,7 +661,7 @@
             document.getElementById('condition').textContent = getConditionText(data.results["Selected day"]);
 
             // Update detailed view link with current parameters
-            updateDetailedLink();
+            updateDetailedLink(data.parameters.date);
 
             // Hide loading, show content
             document.getElementById('loading').style.display = 'none';
@@ -674,7 +674,7 @@
             showDetails(0);
         }
 
-        function updateDetailedLink() {
+        function updateDetailedLink(date) {
             const params = new URLSearchParams();
             
             // Get values from the widget data if available
@@ -684,9 +684,13 @@
                 if (data.location) params.append('location', data.location);
                 if (data.latitude) params.append('latitude', data.latitude);
                 if (data.longitude) params.append('longitude', data.longitude);
-                if (data.date) params.append('date', data.date);
+                
+                if (date) params.append('date', date);
+                else if (data.date) params.append('date', data.date);
+            
                 if (data.delta) params.append('delta', data.delta);
                 if (data.units) params.append('units', data.units);
+                if (data.climate_normal) params.append('climate_normal', data.climate_normal);
             }
             
             // Build URL and update link
@@ -916,6 +920,8 @@
             `;
             
             currentMetrics.innerHTML = metricsHTML;
+
+            updateDetailedLink(data.time[index]);
             
             // Update active state on cards
             document.querySelectorAll('.forecast-card').forEach((card, i) => {
