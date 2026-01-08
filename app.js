@@ -170,6 +170,7 @@ async function start() {
 window.onerror = function (msg, url, lineNo, columnNo, error) {
     // log errors
     document.getElementById("chart").innerHTML = "Error";
+    document.getElementById("loading").innerHTML = "An error occurred while loading the weather data.";
     console.log(msg, url, lineNo, columnNo, error);
     return false;
 }
@@ -188,7 +189,8 @@ async function geocode(){
 }
 
 async function getWeather(){
-    document.getElementById("summary").innerHTML = "Loading...";
+    document.getElementById("loading").innerHTML = "Loading weather data...";
+    document.getElementById("summary").innerHTML = "";
     document.getElementById("chart").innerHTML = "";
     if (document.getElementById("location").value != "" &&
         document.getElementById("location").value != "Current location" &&
@@ -199,9 +201,9 @@ async function getWeather(){
     }
     
     if (document.getElementById("latitude").value == "" || document.getElementById("longitude").value == "") {
-        if (document.getElementById("loading"))
-            document.getElementById("loading").innerHTML = "Location not found";
-        document.getElementById("summary").innerHTML = "Location not found";
+        document.getElementById("loading").innerHTML = "Location not found";
+        document.getElementById("summary").innerHTML = "";
+
         // set widget data to null
         window.widgetData = null;
         return;
@@ -301,13 +303,13 @@ async function getWeather(){
 
     if (date >= delta_ends) {
         // too far in the future
-        document.getElementById('summary').innerHTML = "Date too far in the future";
+        document.getElementById('loading').innerHTML = "Date too far in the future";
         return;
     } else if (date > delta_starts) {
         // delta is in days
         currentA = await getCurrentWeather([latitude, longitude], units);
         currentB = await getHistoricalWeatherCurrent([latitude, longitude], date, delta, units);
-        
+
         current = mergeCurrentHistorical(currentA, currentB, delta_starts.toISOString().slice(0, 10), delta_ends.toISOString().slice(0, 10));
     } else {
         current = await getHistoricalWeatherCurrent([latitude, longitude], date, delta, units);
@@ -318,7 +320,7 @@ async function getWeather(){
     const start_year = CLIMATE_NORMALS[climateNormalIndex]["start"];
     const end_year = CLIMATE_NORMALS[climateNormalIndex]["end"];
 
-    const historical = await getHistoricalWeather([latitude, longitude], date, delta, start_year, end_year, units);
+    const historical = await getHistoricalWeather([latitude, longitude], date, delta, start_year, end_year, units, true);
     const historical_grouped = groupByValue(historical);
     const historical_histogram = createHistogram(historical);
     const current_histograms = [...historical_histogram];
@@ -331,6 +333,7 @@ async function getWeather(){
     let currentVal = getCurrentValue(current, date);
     document.getElementById('chart').innerHTML = "";
     document.getElementById('summary').innerHTML = "";
+    document.getElementById('loading').innerHTML = "";
 
     for (const varName of varsToGetDaily) {
         let chart = createAsciiChart(varName, gg[varName], currentVal[varName], date, historical_grouped[varName].slice());
@@ -452,7 +455,6 @@ function findPercentileForValue(data, value) {
     // find first index greater than value
     var firstIndex = data.findIndex((x) => x >= value);
     var lastIndex = data.findIndex((x) => x > value);
-    console.log("Value:", value, "First index:", firstIndex, "Last index:", lastIndex);
     if (firstIndex === -1 && lastIndex === -1) {
         return [1.01, firstIndex, lastIndex];
     }
@@ -625,8 +627,6 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     }
 
     var gradient = generateSpan(current_series, current_series_days, data, data_days, var_name, unit_type);
-
-    console.log(climateNormal);
 
     var qualifier = "";
     var boldStart = "";
@@ -867,11 +867,13 @@ async function getHistoricalWeather(location, current_date = new Date(), delta =
     location = [location[0].toFixed(2), location[1].toFixed(2)];
     const datas = [];
     var current_date_to = new Date(current_date);
+    if (end_year > new Date().getFullYear()) {
+        end_year = new Date().getFullYear();
+    }
+    const total_years = end_year - start_year;
     for (let i = start_year; i < end_year; i++) {
+        document.getElementById("loading").innerHTML = `Loading weather data... (${(((i - start_year + 1)/total_years)*100).toFixed(0)}%)`;
         current_date_to.setFullYear(i);
-        if (i > new Date().getFullYear()) {
-            continue;
-        }
         const start = new Date(current_date_to.getTime() - delta * 24 * 60 * 60 * 1000);
         const end = new Date(current_date_to.getTime() + delta * 24 * 60 * 60 * 1000);        
         await getWeatherData(start, end, location, unitsType, unitString).then((data) => {
@@ -1078,7 +1080,6 @@ function createAsciiChart(name, groupedData, currentVal, currentDate, historical
                 }
             }
         }
-        console.log("VarValues for " + sortedHistoricalDataKeys[i] + ": " + JSON.stringify(varValues));
         for (var j = 0; j < varValues.length; j++) {
             internalMax += varValues[j].length;
             // repeat symbol into array

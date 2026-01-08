@@ -33,7 +33,7 @@
             width: 100%;
         }
 
-        #summary, #chart {
+        #chart, #loading {
             margin: 20px;
             width: 90%;
         }
@@ -48,7 +48,7 @@
         }
 
         @media (min-width: 800px) {
-            form, #summary, #geocode, #header, #chart {
+            form, #summary, #geocode, #header, #chart, #loading {
                 width: 800px;
             }
         }
@@ -124,6 +124,7 @@
     <div id="geocode" style="margin-top: 20px;">
         <b>Results for: </b> <span id="geocode_result"></span>
     </div>
+    <div id="loading"></div>
     <div id="summary"></div>
     <div id="chart" style="font-family: monospace"></div>
 
