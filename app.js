@@ -167,10 +167,19 @@ async function start() {
     getWeather();
 }
 
+window.addEventListener("unhandledrejection", function (msg, url, lineNo, columnNo, error) {
+        // log errors
+    document.getElementById("chart").innerHTML = "Error";
+    document.getElementById("loading").innerHTML = "An error occurred while loading the weather data: " +
+        msg.reason;
+    return false;
+});
+
 window.onerror = function (msg, url, lineNo, columnNo, error) {
     // log errors
     document.getElementById("chart").innerHTML = "Error";
-    document.getElementById("loading").innerHTML = "An error occurred while loading the weather data.";
+    document.getElementById("loading").innerHTML = "An error occurred while loading the weather data." + 
+        error;
     console.log(msg, url, lineNo, columnNo, error);
     return false;
 }
@@ -234,9 +243,20 @@ async function getWeather(){
         dateString = date.toISOString().slice(0, 10);
         document.getElementById("date").value = dateString;
     }
-    const delta = document.getElementById("delta").value;
+    var delta = document.getElementById("delta").value;
 
-    const units = document.getElementById("units").value;
+    if (delta == null || isNaN(parseInt(delta)) || parseInt(delta) <= 0) {
+        delta = DEFAULT_DELTA;
+        document.getElementById("delta").value = delta;
+    }
+
+    var units = document.getElementById("units").value;
+
+    if (units != "metric" && units != "imperial") {
+        units = getDefaultUnit();
+        document.getElementById("units").value = units;
+    }
+
 
     const location = document.getElementById("location").value;
 
