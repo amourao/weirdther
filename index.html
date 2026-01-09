@@ -182,6 +182,10 @@
 
         function getPercentilePretty(value) {
             var valueInt = Math.round(value * 100)
+            if (valueInt < 0)
+                valueInt = 0;
+            if (valueInt > 100)
+                valueInt = 100;
             if (valueInt == 1) return "1st";
             if (valueInt == 2) return "2nd";
             if (valueInt == 3) return "3rd";
