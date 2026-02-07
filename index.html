@@ -79,15 +79,41 @@
             // After data is loaded, extract it for the widget
             initializeWidget();
         };
+        function getWeatherIcon(precip, snow, sunshinePct, wind, units) {
+            if (units === 'imperial') {
+                return getWeatherIconMetric(precip * 25.4, snow * 25.4, sunshinePct, wind * 1.60934);
+            } else {
+                return getWeatherIconMetric(precip, snow, sunshinePct, wind);
+            }
+        }
 
-        function getWeatherIcon(rain, snow, sunshine) {
-            if (snow > 0.2) return '🌨';
-            if (rain > 5) return '🌧️';
-            if (rain > 0.2) return '🌦️';
-            if (sunshine > 0.8) return '☀️';
-            if (sunshine > 0.66) return '🌤️';
-            if (sunshine > 0.33) return '⛅';
-            return '☁️';
+        function getWeatherIconMetric(precipMm, snowMm, sunshinePct, windKmh){
+            let icon;
+
+            if (snowMm > 0) {
+                icon = "🌨️";
+            } else if (precipMm > 0) {
+                icon = sunshinePct < 0.20 ? "🌧️" : "🌦️";
+            } else if (sunshinePct < 0.10) {
+                icon = "☁️";
+            } else if (sunshinePct < 0.30) {
+                icon = "🌥️";
+            } else if (sunshinePct < 0.60) {
+                icon = "⛅";
+            } else if (sunshinePct < 0.85) {
+                icon = "🌤️";
+            } else {
+                icon = "☀️";
+            }
+            
+            // Wind indicators
+            if (windKmh >= 50) {
+                icon += "💨";
+            } else if (windKmh >= 25) {
+                icon += "🌬️";
+            }
+            
+            return icon;
         }
 
         function formatDate(dateStr) {
@@ -196,7 +222,7 @@
             const forecastGrid = document.getElementById('forecastGrid');
             const todayData = weatherData.results["Selected day"];
             const futureData = weatherData.results["Days after"];
-            
+            const units = weatherData.units || getDefaultUnit();
             // Combine today and future days
             const allDays = {
                 time: [todayData.time[0], ...futureData.time],
@@ -235,7 +261,7 @@
                     snow: allDays.percentiles.snowfall_sum ? parseFloat(allDays.percentiles.snowfall_sum[index]) : 0
                 };
 
-                const icon = getWeatherIcon(rain, snow, sunshine);
+                const icon = getWeatherIcon(rain, snow, sunshine, wind, units);
                 const weirdClass = weirdScore == 100 ? 'extreme-weird' : (weirdScore > 70 ? 'high-weird' : (weirdScore < 30 ? 'low-weird' : 'moderate-weird'));
                 const weirdLabel = weirdScore == 100 ? 'UNPRECEDENTED' : (weirdScore > 70 ? 'UNUSUAL' : (weirdScore < 30 ? 'TYPICAL' : 'MODERATE'));
 
