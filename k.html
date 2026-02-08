@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weirdther</title>
+<style>
+body { margin: 0; padding: 0; background: white; color: black; }
+#wrapper { padding: 18px 22px; font-family: Helvetica, Arial, sans-serif; -webkit-box-sizing: border-box; box-sizing: border-box; }
+#header { font-size: 42px; padding-bottom: 6px; border-bottom: 3px solid black; margin-bottom: 10px; }
+.hdr-row { border: none; width: 100%; }
+.hdr-row td { border: none; padding: 0; font-size: 42px; }
+.hdr-right { text-align: right; }
+#loading { font-size: 48px; padding: 30px 0; }
+#error { font-size: 48px; font-weight: bold; }
+/* Vars + Score side by side */
+.vars-row { border: none; width: 100%; margin: 0; }
+.vars-row td { border: none; padding: 0; vertical-align: top; }
+.score-box { text-align: right; white-space: nowrap; padding-left: 12px; }
+.score-num { font-size: 156px; font-weight: bold; line-height: 1; padding: 0 6px; }
+.score-lbl { font-size: 66px; font-weight: bold; letter-spacing: 2px; padding: 0 6px; }
+.score-num-inv { font-size: 156px; font-weight: bold; line-height: 1; padding: 0 6px; color: white; background: black; display: inline-block; }
+.score-lbl-inv { font-size: 66px; font-weight: bold; letter-spacing: 2px; padding: 0 6px; color: white; background: black; display: inline-block; }
+.score-weirdther { font-size: 48px;}
+.score-freq { font-size: 48px; color: gray; }
+/* Variable breakdown */
+table.vars { border-collapse: collapse; width: 100%; margin: 0; }
+table.vars td { border: none; border-bottom: 1px solid #ddd; padding: 2px 6px; font-size: 52px; }
+table.vars .vi { font-size: 54px; text-align: center; width: 56px; }
+table.vars .pct { color: #777; text-align: right; }
+table.vars .bld td { font-weight: bold; color: white; background: black; }
+table.vars .bld-lo td { font-weight: bold; color: white; background: gray; }
+/* Forecast */
+.sep { border-top: 3px solid black; margin: 8px 0; }
+table.fc { border-collapse: collapse; width: 100%; }
+table.fc th, table.fc td { border: 1px solid black; padding: 5px 7px; text-align: right; font-size: 40px; }
+table.fc th { background: lightgray; color: black; font-size: 36px; }
+table.fc .day-col { text-align: left; }
+table.fc .icon-col { font-size: 46px; text-align: center; width: 48px; }
+table.fc .bld { font-weight: bold; color: white; background: black; }
+table.fc .bld-lo { font-weight: bold; color: white; background: gray; }
+table.fc a { color: black; text-decoration: underline; }
+/* Header controls */
+.loc-input { font-size: 36px; border: 1px solid gray; padding: 2px 6px; width: 70%; }
+.go-btn { font-size: 36px; border: 1px solid gray; padding: 2px 8px; }
+.score-refresh { font-size: 36px; color: lightgray; }
+</style>
+</head>
+<body>
+<div id="wrapper">
+<div id="header"></div>
+<div id="loading"></div>
+<div id="error"></div>
+<div id="results"></div>
+</div>
+
+<script>
+/* ========== CONFIGURATION ========== */
+var DAILY_VARS = "temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max,sunshine_duration";
+var VAR_LIST = DAILY_VARS.split(",");
+var DEFAULT_DELTA = 5;
+var NUM_FORECAST_DAYS = 6;
+var HISTORICAL_YEARS = 26;
+var SCORE_VARS = ["temperature_2m_max", "temperature_2m_min", "rain_sum", "snowfall_sum"];
+var FRIENDLY = {
+    "temperature_2m_max": {name: "Max", lower: "colder", higher: "warmer", metric: "&deg;C", imperial: "&deg;F"},
+    "temperature_2m_min": {name: "Min", lower: "colder", higher: "warmer", metric: "&deg;C", imperial: "&deg;F"},
+    "rain_sum": {name: "Rain", lower: "drier", higher: "rainier", metric: "mm", imperial: "in"},
+    "snowfall_sum": {name: "Snow", lower: "less snowy", higher: "snowier", metric: "mm", imperial: "in"},
+    "wind_speed_10m_max": {name: "Wind", lower: "calmer", higher: "windier", metric: "km/h", imperial: "mph"},
+    "sunshine_duration": {name: "Sun", lower: "less sunny", higher: "sunnier", metric: "%", imperial: "%"}
+};
+
+var VAR_ICONS = {
+    "temperature_2m_max": "&#9650;",
+    "temperature_2m_min": "&#9660;",
+    "rain_sum": "&#9730;",
+    "snowfall_sum": "&#9731;",
+    "wind_speed_10m_max": "&#8776;",
+    "sunshine_duration": "&#9728;"
+};
+
+var currentLat = null;
+var currentLon = null;
+var currentUnits = "metric";
+var currentDateStr = "";
+var locationName = "";
+
+/* ========== CACHE ========== */
+var useCache = (function() {
+    try {
+        var t = "__wh_test__";
+        localStorage.setItem(t, t);
+        localStorage.removeItem(t);
+        return true;
+    } catch (e) {
+        return false;
+    }
+})();
+
+function cacheKey(lat, lon, mmdd, delta, units) {
+    return "wh_" + lat + "_" + lon + "_" + mmdd + "_" + delta + "_" + units + "_" + toISODate(new Date());
+}
+
+function clearOldCache() {
+    if (!useCache) return;
+    try {
+        var today = toISODate(new Date());
+        var keys = [];
+        for (var i = 0; i < localStorage.length; i++) {
+            keys.push(localStorage.key(i));
+        }
+        for (var j = 0; j < keys.length; j++) {
+            if (keys[j].indexOf("wh_") === 0 && keys[j].indexOf(today) === -1) {
+                localStorage.removeItem(keys[j]);
+            }
+        }
+    } catch (e) {}
+}
+
+/* ========== UTILITY ========== */
+
+function parseQueryString() {
+    var qs = window.location.search.substring(1);
+    var params = {"l": "Lisbon, Portugal"};
+    if (!qs) return params;
+    var pairs = qs.split("&");
+    for (var i = 0; i < pairs.length; i++) {
+        var pair = pairs[i].split("=");
+        if (pair.length === 2) {
+            params[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1]);
+        }
+    }
+    return params;
+}
+
+function toISODate(d) {
+    var y = d.getFullYear();
+    var m = d.getMonth() + 1;
+    var day = d.getDate();
+    return y + "-" + (m < 10 ? "0" : "") + m + "-" + (day < 10 ? "0" : "") + day;
+}
+
+function parseDate(str) {
+    var parts = str.split("-");
+    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+}
+
+function daysIntoYear(date) {
+    return (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(date.getFullYear(), 0, 0)) / 86400000;
+}
+
+function show(id, text) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = text;
+    el.style.display = text ? "" : "none";
+}
+
+function formatDateShort(dateStr) {
+    var d = parseDate(dateStr);
+    var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return days[d.getDay()] + " " + d.getDate() + " " + months[d.getMonth()];
+}
+
+function isScoreVar(varName) {
+    for (var i = 0; i < SCORE_VARS.length; i++) {
+        if (SCORE_VARS[i] === varName) return true;
+    }
+    return false;
+}
+
+/* ========== DAYLIGHT ========== */
+
+function calculateDayLength(latitude, dayOfYear) {
+    var declination = 23.44 * Math.sin((360 / 365) * (284 + dayOfYear) * Math.PI / 180);
+    var latRad = latitude * Math.PI / 180;
+    var decRad = declination * Math.PI / 180;
+    var cosHA = -Math.tan(latRad) * Math.tan(decRad);
+    if (cosHA > 1) return 0;
+    if (cosHA < -1) return 24;
+    var hourAngle = Math.acos(cosHA) * 180 / Math.PI;
+    return (2 / 15) * hourAngle;
+}
+
+function getDaylightHours(dateStr, latitude) {
+    var d = parseDate(dateStr);
+    return calculateDayLength(latitude, daysIntoYear(d));
+}
+
+/* ========== HTTP ========== */
+
+function httpGet(url, callback) {
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", url, true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                try {
+                    callback(null, JSON.parse(xhr.responseText));
+                } catch (e) {
+                    callback("JSON parse error", null);
+                }
+            } else {
+                callback("HTTP error " + xhr.status, null);
+            }
+        }
+    };
+    xhr.send(null);
+}
+
+/* ========== API ========== */
+
+function geocode(location, callback) {
+    var url = "https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(location) + "&count=10&format=json";
+    httpGet(url, function(err, data) {
+        if (err || !data || !data.results || data.results.length === 0) {
+            callback("Location not found");
+            return;
+        }
+        var r = data.results[0];
+        var name = r.name;
+        if (r.admin1) name += ", " + r.admin1;
+        if (r.country) name += ", " + r.country;
+        callback(null, parseFloat(r.latitude).toFixed(2), parseFloat(r.longitude).toFixed(2), name);
+    });
+}
+
+function getUnitString(units) {
+    if (units === "imperial") return "temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
+    return "";
+}
+
+function fetchForecast(lat, lon, units, callback) {
+    var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=" + lat + "&longitude=" + lon + "&daily=" + DAILY_VARS;
+    var us = getUnitString(units);
+    if (us) url += "&" + us;
+    httpGet(url, callback);
+}
+
+function fetchHistoricalYear(lat, lon, date, delta, year, units, callback) {
+    var target = new Date(date.getTime());
+    target.setFullYear(year);
+    var startDate = new Date(target.getTime() - delta * 86400000);
+    var endDate = new Date(target.getTime() + delta * 86400000);
+    var now = new Date();
+    if (startDate > now) { callback(null, null); return; }
+    if (endDate > now) endDate = new Date(now.getTime() - 86400000);
+    var url = "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat + "&longitude=" + lon +
+        "&start_date=" + toISODate(startDate) + "&end_date=" + toISODate(endDate) + "&daily=" + DAILY_VARS;
+    var us = getUnitString(units);
+    if (us) url += "&" + us;
+    httpGet(url, callback);
+}
+
+function fetchAllHistorical(lat, lon, date, delta, startYear, endYear, units, onProgress, callback) {
+    var mmdd = (date.getMonth() + 1) + "-" + date.getDate();
+    var key = cacheKey(lat, lon, mmdd, delta, units);
+
+    /* Try full-day cache first */
+    if (useCache) {
+        clearOldCache();
+        try {
+            var cached = localStorage.getItem(key);
+            if (cached) {
+                var parsed = JSON.parse(cached);
+                if (parsed && parsed.length > 0) {
+                    callback(null, parsed);
+                    return;
+                }
+            }
+        } catch (e) {}
+    }
+
+    /* Fetch all years sequentially */
+    var results = [];
+    var total = endYear - startYear;
+
+    function next(year) {
+        if (year >= endYear) {
+            /* Cache the full result */
+            if (useCache) {
+                try { localStorage.setItem(key, JSON.stringify(results)); } catch (e) {}
+            }
+            callback(null, results);
+            return;
+        }
+        onProgress(year - startYear, total);
+        fetchHistoricalYear(lat, lon, date, delta, year, units, function(err, data) {
+            if (!err && data && data.daily && data.daily.time && data.daily.time.length > 0) {
+                results.push(data);
+            }
+            next(year + 1);
+        });
+    }
+    next(startYear);
+}
+
+/* ========== DATA PROCESSING ========== */
+
+function allZero(arr) {
+    for (var i = 0; i < arr.length; i++) {
+        if (arr[i] != null && arr[i] > 0) return false;
+    }
+    return true;
+}
+
+function groupAllHistorical(datas) {
+    var grouped = {};
+    var k;
+    for (k = 0; k < VAR_LIST.length; k++) grouped[VAR_LIST[k]] = [];
+    grouped["time"] = [];
+
+    for (var i = 0; i < datas.length; i++) {
+        var daily = datas[i].daily;
+        for (var j = 0; j < daily.time.length; j++) {
+            grouped["time"].push(daily.time[j]);
+            for (k = 0; k < VAR_LIST.length; k++) {
+                var vn = VAR_LIST[k];
+                var val = (daily[vn] && daily[vn][j] != null) ? daily[vn][j] : null;
+                grouped[vn].push(val);
+            }
+        }
+    }
+    return grouped;
+}
+
+function findPercentileForValue(sortedData, value) {
+    var firstIndex = -1, lastIndex = -1, i;
+    for (i = 0; i < sortedData.length; i++) {
+        if (sortedData[i] >= value) { firstIndex = i; break; }
+    }
+    for (i = 0; i < sortedData.length; i++) {
+        if (sortedData[i] > value) { lastIndex = i; break; }
+    }
+    if (firstIndex === -1 && lastIndex === -1) return 1.01;
+    if (firstIndex === -1 || (firstIndex === 0 && lastIndex === 0)) return -0.01;
+    if (firstIndex === 0 && lastIndex === 1) return 0;
+    if (lastIndex === -1) return firstIndex === 0 ? 0.5 : 1;
+    if (firstIndex <= sortedData.length / 2 && lastIndex >= sortedData.length / 2) return 0.5;
+    var pL = firstIndex / sortedData.length;
+    var pR = lastIndex / sortedData.length;
+    return Math.abs(pL - 0.5) < Math.abs(pR - 0.5) ? pL : pR;
+}
+
+function computeWeirdtherScore(percentile) {
+    var diff = Math.abs(percentile - 0.5);
+    var score = diff;
+    if (diff > 0.3) score = diff * 2;
+    return score * score;
+}
+
+function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGrouped, latitude, units) {
+    var allScores = [];
+    for (var d = 0; d < numDays; d++) {
+        var idx = todayIndex + d;
+        if (idx >= forecastDaily.time.length) break;
+
+        var ds = {
+            date: forecastDaily.time[idx],
+            tempMax: forecastDaily.temperature_2m_max[idx],
+            tempMin: forecastDaily.temperature_2m_min[idx],
+            rain: forecastDaily.rain_sum[idx] || 0,
+            snow: forecastDaily.snowfall_sum[idx] || 0,
+            wind: forecastDaily.wind_speed_10m_max[idx] || 0,
+            sunshineSec: forecastDaily.sunshine_duration[idx] || 0,
+            sunshinePct: 0,
+            weirdther: 0,
+            maxPercentile: 0.5,
+            vars: {}
+        };
+
+        var dlHours = getDaylightHours(ds.date, latitude);
+        if (dlHours > 0) ds.sunshinePct = ds.sunshineSec / (dlHours * 3600);
+        if (ds.sunshinePct > 1) ds.sunshinePct = 1;
+
+        var maxScore = 0;
+        var maxPctile = 0.5;
+
+        for (var v = 0; v < VAR_LIST.length; v++) {
+            var varName = VAR_LIST[v];
+            var curVal = forecastDaily[varName][idx];
+            if (curVal == null) continue;
+
+            var hist = [];
+            for (var h = 0; h < historicalGrouped[varName].length; h++) {
+                var hv = historicalGrouped[varName][h];
+                if (hv == null) continue;
+                if (varName === "sunshine_duration") {
+                    var hdl = getDaylightHours(historicalGrouped["time"][h], latitude);
+                    hv = (hdl > 0) ? hv / (hdl * 36) : 0;
+                }
+                hist.push(hv);
+            }
+            hist.sort(function(a, b) { return a - b; });
+            if (hist.length === 0) continue;
+
+            var cmpVal = curVal;
+            if (varName === "sunshine_duration") {
+                cmpVal = (dlHours > 0) ? curVal / (dlHours * 36) : 0;
+            }
+
+            var pctile = findPercentileForValue(hist, cmpVal);
+            var score = computeWeirdtherScore(pctile);
+
+            var qualifier = "";
+            if (pctile < 0) qualifier = FRIENDLY[varName].lower + "!";
+            else if (pctile > 1) qualifier = FRIENDLY[varName].higher + "!";
+            else if (pctile < 0.05) qualifier = "very " + FRIENDLY[varName].lower;
+            else if (pctile > 0.95) qualifier = "very " + FRIENDLY[varName].higher;
+            else if (pctile < 0.25) qualifier = FRIENDLY[varName].lower;
+            else if (pctile > 0.75) qualifier = FRIENDLY[varName].higher;
+
+            var dispPctile = pctile;
+            if (dispPctile < 0) dispPctile = 0;
+            if (dispPctile > 1) dispPctile = 1;
+
+            var dispValue = curVal;
+            if (varName === "sunshine_duration") dispValue = ds.sunshinePct;
+
+            ds.vars[varName] = {
+                raw: dispPctile,
+                score: score,
+                qualifier: qualifier,
+                value: dispValue
+            };
+
+            if (isScoreVar(varName) && score > maxScore) {
+                maxScore = score;
+                maxPctile = Math.abs(pctile - 0.5) + 0.5;
+            }
+        }
+
+        ds.weirdther = Math.round(maxScore * 100);
+        if (ds.weirdther > 100) ds.weirdther = 100;
+        if (ds.weirdther === 100) ds.weirdther = 99;
+        ds.maxPercentile = maxPctile;
+        allScores.push(ds);
+    }
+    return allScores;
+}
+
+/* ========== RENDERING ========== */
+
+function getWeather(rain, snow, sunshinePct, wind, units) {
+    var rMm = rain, sMm = snow, wKmh = wind;
+    if (units === "imperial") { rMm = rain * 25.4; sMm = snow * 25.4; wKmh = wind * 1.60934; }
+    var c = "", icon = "";
+    if (sMm > 0)               { c = "Snow";       icon = "&#10052;"; }
+    else if (rMm > 20)         { c = "Heavy Rain";  icon = "&#9730;"; }
+    else if (rMm > 0)          { c = "Rain";        icon = "&#9730;"; }
+    else if (sunshinePct < 0.10){ c = "Overcast";   icon = "&#9729;"; }
+    else if (sunshinePct < 0.30){ c = "Cloudy";     icon = "&#9729;"; }
+    else if (sunshinePct < 0.60){ c = "Pt.Cloudy";  icon = "&#9728;"; }
+    else if (sunshinePct < 0.85){ c = "Fair";       icon = "&#9728;"; }
+    else                        { c = "Sunny";      icon = "&#9728;"; }
+    if (wKmh >= 50) c += " +Gale";
+    else if (wKmh >= 25) c += " +Wind";
+    return {text: c, icon: icon};
+}
+
+function getScoreLabel(score) {
+    if (score >= 99) return "UNPRECEDENTED";
+    if (score > 70) return "UNUSUAL";
+    if (score >= 30) return "MODERATE";
+    return "TYPICAL";
+}
+
+function genOnceEvery(percentile, startYear, endYear) {
+    var p = 1 - Math.abs(0.5 - percentile) * 2;
+    var days = Math.round(1 / p);
+    if (percentile < 0 || percentile > 1) return "never in " + startYear + "-" + endYear + "!";
+    if (isNaN(days) || !isFinite(days)) return "once in " + startYear + "-" + endYear + "!";
+    if (days <= 1) return "every other day";
+    if (days >= 365) return "once every " + Math.round(days / 365) + "yr";
+    if (days >= 28 && days <= 32) return "once a month";
+    if (days >= 6 && days <= 8) return "once a week";
+    return "once every " + days + "d";
+}
+
+function pctPretty(p) {
+    var v = Math.round(p * 100);
+    if (v < 0) v = 0;
+    if (v > 100) v = 100;
+    if (v === 1) return "1st";
+    if (v === 2) return "2nd";
+    if (v === 3) return "3rd";
+    if (v === 21) return "21st";
+    if (v === 22) return "22nd";
+    if (v === 23) return "23rd";
+    if (v === 31) return "31st";
+    if (v === 32) return "32nd";
+    if (v === 33) return "33rd";
+    return v + "th";
+}
+
+function isUnusual(percentile) {
+    return percentile < 0.15 || percentile > 0.85;
+}
+
+function unusualClass(percentile) {
+    if (percentile < 0.15) return "bld-lo";
+    if (percentile > 0.85) return "bld";
+    return "";
+}
+
+function buildDateLink(dateStr) {
+    var params = parseQueryString();
+    var keys = ["l", "latitude", "longitude", "units", "r", "s"];
+    var qs = "";
+    for (var i = 0; i < keys.length; i++) {
+        if (params[keys[i]] != null && params[keys[i]] !== "") {
+            qs += (qs ? "&" : "?") + keys[i] + "=" + encodeURIComponent(params[keys[i]]);
+        }
+    }
+    qs += (qs ? "&" : "?") + "date=" + dateStr;
+    return qs;
+}
+
+function fmtVal(varName, value, units) {
+    if (varName === "sunshine_duration") return Math.round(value * 100) + "%";
+    if (varName === "temperature_2m_max" || varName === "temperature_2m_min") return Math.round(value) + FRIENDLY[varName][units];
+    if (varName === "wind_speed_10m_max") return Math.round(value) + FRIENDLY[varName][units];
+    return (value != null ? value.toFixed(1) : "0") + FRIENDLY[varName][units];
+}
+
+function renderAll(dayScores, units, startYear, endYear, hideVars) {
+    var html = "";
+    var today = dayScores[0];
+    var nowStr = toISODate(new Date());
+    var isToday = (toISODate(parseDate(today.date)) === nowStr);
+    var wx = getWeather(today.rain, today.snow, today.sunshinePct, today.wind, units);
+    var label = getScoreLabel(today.weirdther);
+    var dateLabel = isToday ? "Today" : formatDateShort(today.date);
+    var hidePrecip = hideVars["rain_sum"] && hideVars["snowfall_sum"];
+
+    /* ---- Update header: location left, weather+date right ---- */
+    show("header", '<table class="hdr-row"><tr><td>' + locationName + '</td><td class="hdr-right">' + wx.icon + " - " + dateLabel + '</td></tr></table>');
+
+    /* ---- Vars left, score right ---- */
+    html += '<table class="vars-row"><tr><td>';
+
+    html += '<table class="vars">';
+    for (var v = 0; v < VAR_LIST.length; v++) {
+        var vn = VAR_LIST[v];
+        if (hideVars[vn]) continue;
+        var vi = today.vars[vn];
+        if (!vi) continue;
+        var cls = unusualClass(vi.raw);
+        html += '<tr' + (cls ? ' class="' + cls + '"' : '') + '>';
+        html += '<td class="vi">' + VAR_ICONS[vn] + '</td>';
+        html += '<td>' + fmtVal(vn, vi.value, units) + '</td>';
+        html += '<td class="pct">' + pctPretty(vi.raw) + '</td>';
+        html += '</tr>';
+    }
+    html += '</table>';
+
+    html += '</td><td class="score-box">';
+    html += '<div class="score-weirdther">WEIRDTHER</div>';
+    if (today.weirdther >= 75) {
+        html += '<div><span class="score-num-inv">' + today.weirdther + '</span></div>';
+    } else {
+        html += '<div class="score-num">' + today.weirdther + '</div>';
+    }
+    html += '<div class="score-lbl">' + label + '</div>';
+    html += '<div class="score-freq">' + genOnceEvery(today.maxPercentile, startYear, endYear) + '</div>';
+    // add lastTick
+    html += '<div class="score-freq">' + new Date(lastTick).toISOString().slice(0,19) + '</div>'; 
+    html += '</td></tr></table>';
+
+    /* ---- Forecast table with values, clickable days ---- */
+    html += '<div class="sep"></div>';
+    html += '<table class="fc">';
+    html += '<tr><th></th><th class="day-col">Day</th><th>&#9650;</th><th>&#9660;</th>';
+    if (!hidePrecip) html += '<th>&#9730;</th>';
+    html += '<th><b>&#8776;</b></th><th>&#9728;</th><th>W</th></tr>';
+
+    for (var d = 0; d < dayScores.length; d++) {
+        var ds = dayScores[d];
+        var dd = parseDate(ds.date);
+        var rowIsToday = (toISODate(dd) === nowStr);
+        var dayLabel = rowIsToday ? "Today" : formatDateShort(ds.date);
+        var rwx = getWeather(ds.rain, ds.snow, ds.sunshinePct, ds.wind, units);
+        var link = buildDateLink(ds.date);
+
+        /* Which cells to style: unusual score vars */
+        var cTempMax = ds.vars["temperature_2m_max"] ? unusualClass(ds.vars["temperature_2m_max"].raw) : "";
+        var cTempMin = ds.vars["temperature_2m_min"] ? unusualClass(ds.vars["temperature_2m_min"].raw) : "";
+        var cWind = ds.vars["wind_speed_10m_max"] ? unusualClass(ds.vars["wind_speed_10m_max"].raw) : "";
+        var cSun = ds.vars["sunshine_duration"] ? unusualClass(ds.vars["sunshine_duration"].raw) : "";
+
+        var sunPct = Math.round(ds.sunshinePct * 100) + "%";
+
+        html += '<tr>';
+        html += '<td class="icon-col">' + rwx.icon + '</td>';
+        html += '<td class="day-col"><a href="' + link + '" ' + (rowIsToday ? ' style="font-weight: bold;"' : '') + '>' + dayLabel + '</a></td>';
+        html += '<td' + (cTempMax ? ' class="' + cTempMax + '"' : '') + '>' + Math.round(ds.tempMax) + '</td>';
+        html += '<td' + (cTempMin ? ' class="' + cTempMin + '"' : '') + '>' + Math.round(ds.tempMin) + '</td>';
+        if (!hidePrecip) {
+            var cRain = ds.vars["rain_sum"] ? unusualClass(ds.vars["rain_sum"].raw) : "";
+            var cSnow = ds.vars["snowfall_sum"] ? unusualClass(ds.vars["snowfall_sum"].raw) : "";
+            var cPrecip = ds.snow > 0 ? cSnow : cRain;
+            var precip = ds.snow > 0
+                ? ds.snow.toFixed(1)
+                : ds.rain.toFixed(1);
+            html += '<td' + (cPrecip ? ' class="' + cPrecip + '"' : '') + '>' + precip + '</td>';
+        }
+        html += '<td' + (cWind ? ' class="' + cWind + '"' : '') + '>' + Math.round(ds.wind) + '</td>';
+        html += '<td' + (cSun ? ' class="' + cSun + '"' : '') + '>' + sunPct + '</td>';
+        html += '<td' + (ds.weirdther >= 75 ? ' class="bld"' : '') + '>' + ds.weirdther + '</td>';
+        html += '</tr>';
+    }
+    html += '</table>';
+
+    show("results", html);
+}
+
+/* ========== ROTATION ========== */
+
+function setupRotation(angle, zoom) {
+    var deg = parseInt(angle, 10);
+    if (isNaN(deg)) return;
+    if (!zoom || zoom <= 0) zoom = 1;
+    var el = document.getElementById("wrapper");
+    if (!el) return;
+    var w = window.innerWidth || document.documentElement.clientWidth || screen.width || 600;
+    var h = window.innerHeight || document.documentElement.clientHeight || screen.height || 800;
+    /* For 90/270 rotation, swap and scale wrapper dimensions */
+    var a = Math.abs(deg % 360);
+    if (a === 90 || a === 270) {
+        var wrapW = Math.round(h / zoom);
+        var wrapH = Math.round(w / zoom);
+        el.style.width = wrapW + "px";
+        el.style.height = wrapH + "px";
+        el.style.position = "absolute";
+        el.style.left = Math.round((w - wrapW) / 2) + "px";
+        el.style.top = Math.round((h - wrapH) / 2) + "px";
+        el.style.overflow = "hidden";
+    }
+    var xf = "rotate(" + deg + "deg)";
+    if (zoom !== 1) xf += " scale(" + zoom + ")";
+    el.style.webkitTransformOrigin = "50% 50%";
+    el.style.webkitTransform = xf;
+    el.style.transformOrigin = "50% 50%";
+    el.style.transform = xf;
+}
+
+/* ========== MAIN FLOW ========== */
+
+function loadWeather(lat, lon, units, dateStr) {
+    currentLat = lat;
+    currentLon = lon;
+    currentUnits = units;
+    currentDateStr = dateStr;
+    var date = parseDate(dateStr);
+    var delta = DEFAULT_DELTA;
+    var endYear = new Date().getFullYear();
+    var startYear = endYear - HISTORICAL_YEARS;
+
+    show("error", "");
+    show("results", "");
+    show("loading", "Loading forecast...");
+
+    fetchForecast(lat, lon, units, function(err, forecast) {
+        if (err || !forecast || !forecast.daily) {
+            show("loading", "");
+            show("error", "Error loading forecast: " + (err || "no data"));
+            return;
+        }
+
+        show("loading", "Loading historical data... 0%");
+
+        fetchAllHistorical(lat, lon, date, delta, startYear, endYear, units,
+            function(done, total) {
+                show("loading", "Loading historical data... " + Math.round((done / total) * 100) + "%");
+            },
+            function(err, historical) {
+                show("loading", "");
+                if (err || historical.length === 0) {
+                    show("error", "Error loading historical data.");
+                    return;
+                }
+
+                var grouped = groupAllHistorical(historical);
+
+                var todayIdx = -1;
+                for (var i = 0; i < forecast.daily.time.length; i++) {
+                    if (forecast.daily.time[i] === dateStr) { todayIdx = i; break; }
+                }
+                if (todayIdx === -1) {
+                    show("error", "Date " + dateStr + " not found in forecast.");
+                    return;
+                }
+
+                /* Check if rain/snow are all zero in history + forecast */
+                var hideVars = {};
+                var precipVars = ["rain_sum", "snowfall_sum"];
+                for (var pv = 0; pv < precipVars.length; pv++) {
+                    var pvn = precipVars[pv];
+                    if (allZero(grouped[pvn])) {
+                        var fcAllZero = true;
+                        for (var fi = todayIdx; fi < todayIdx + NUM_FORECAST_DAYS && fi < forecast.daily.time.length; fi++) {
+                            if ((forecast.daily[pvn][fi] || 0) > 0) { fcAllZero = false; break; }
+                        }
+                        if (fcAllZero) hideVars[pvn] = true;
+                    }
+                }
+
+                var scores = computeAllDayScores(forecast.daily, todayIdx, NUM_FORECAST_DAYS, grouped, lat, units);
+                if (scores.length === 0) {
+                    show("error", "No data to display.");
+                    return;
+                }
+
+                renderAll(scores, units, startYear, endYear, hideVars);
+            }
+        );
+    });
+}
+
+/* ========== AUTO REFRESH ========== */
+var lastTick = new Date().getTime();
+setInterval(function() {
+    var now = new Date().getTime();
+    if (now - lastTick >= 3600000 ) {
+        window.location.reload();
+    }
+    lastTick = now;
+}, 5000000);
+
+/* ========== INIT ========== */
+window.onload = function() {
+    var params = parseQueryString();
+    var loc = params["l"] || "";
+    var lat = params["latitude"] || "";
+    var lon = params["longitude"] || "";
+    var rParam = params["r"] || "";
+    var sParam = params["s"] || "";
+    currentUnits = params["units"] || "metric";
+    currentDateStr = params["date"] || toISODate(new Date());
+    //     currentDateStr = params["date"] || toISODate(new Date("2026-02-20"));
+
+    var zoom = 1;
+    if (sParam) {
+        zoom = parseInt(sParam, 10) / 100;
+        if (isNaN(zoom) || zoom <= 0) zoom = 1;
+    }
+    if (rParam) {
+        setupRotation(rParam, zoom);
+    } else if (zoom !== 1) {
+        var el = document.getElementById("wrapper");
+        if (el) el.style.zoom = zoom;
+    }
+
+    if (lat && lon) {
+        locationName = loc || lat + ", " + lon;
+        show("header", locationName);
+        loadWeather(parseFloat(lat), parseFloat(lon), currentUnits, currentDateStr);
+    } else if (loc) {
+        show("header", "Loading...");
+        geocode(loc, function(err, gLat, gLon, name) {
+            if (err) {
+                show("loading", "");
+                show("error", "Location not found: " + loc);
+                return;
+            }
+            locationName = name;
+            show("header", name);
+            loadWeather(parseFloat(gLat), parseFloat(gLon), currentUnits, currentDateStr);
+        });
+    } else {
+        show("header", "WEIRDTHER");
+        show("loading", "Add ?location=City to the URL");
+    }
+};
+</script>
+</body>
+</html>
