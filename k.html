@@ -505,6 +505,36 @@ function unusualClass(percentile) {
     return "";
 }
 
+function buildPageUrl(overrides) {
+    var params = parseQueryString();
+    var keys = ["l", "latitude", "longitude", "units", "date", "r", "s"];
+    var i, k;
+    for (i = 0; i < keys.length; i++) {
+        k = keys[i];
+        if (overrides[k] !== undefined) params[k] = overrides[k];
+    }
+    var qs = "";
+    for (i = 0; i < keys.length; i++) {
+        k = keys[i];
+        if (params[k] != null && params[k] !== "") {
+            qs += (qs ? "&" : "?") + k + "=" + encodeURIComponent(params[k]);
+        }
+    }
+    return window.location.pathname + qs;
+}
+
+function goLocation() {
+    var inp = document.getElementById("loc-input");
+    if (!inp || !inp.value) return;
+    window.location.href = buildPageUrl({"l": inp.value, "latitude": "", "longitude": "", "date": ""});
+}
+
+function formatTime(d) {
+    var h = d.getHours();
+    var m = d.getMinutes();
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+}
+
 function buildDateLink(dateStr) {
     var params = parseQueryString();
     var keys = ["l", "latitude", "longitude", "units", "r", "s"];
@@ -535,8 +565,16 @@ function renderAll(dayScores, units, startYear, endYear, hideVars) {
     var dateLabel = isToday ? "Today" : formatDateShort(today.date);
     var hidePrecip = hideVars["rain_sum"] && hideVars["snowfall_sum"];
 
-    /* ---- Update header: location left, weather+date right ---- */
-    show("header", '<table class="hdr-row"><tr><td>' + locationName + '</td><td class="hdr-right">' + wx.icon + " - " + dateLabel + '</td></tr></table>');
+    /* ---- Update header: location input left, units+weather right ---- */
+    var escapedName = locationName.replace(/"/g, '&quot;');
+    var metricUrl = buildPageUrl({"units": "metric"});
+    var imperialUrl = buildPageUrl({"units": "imperial"});
+    var unitC = units === "metric" ? "<b>C</b>" : '<a href="' + metricUrl + '">C</a>';
+    var unitF = units === "imperial" ? "<b>F</b>" : '<a href="' + imperialUrl + '">F</a>';
+    show("header", '<table class="hdr-row"><tr>' +
+        '<td><form onsubmit="goLocation();return false;" style="margin:0;padding:0;"><input id="loc-input" class="loc-input" value="' + escapedName + '"><input type="submit" value="Go" class="go-btn"></form></td>' +
+        '<td class="hdr-right">' + unitC + '|' + unitF + ' ' + wx.icon + ' ' + dateLabel + '</td>' +
+        '</tr></table>');
 
     /* ---- Vars left, score right ---- */
     html += '<table class="vars-row"><tr><td>';
@@ -565,8 +603,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars) {
     }
     html += '<div class="score-lbl">' + label + '</div>';
     html += '<div class="score-freq">' + genOnceEvery(today.maxPercentile, startYear, endYear) + '</div>';
-    // add lastTick
-    html += '<div class="score-freq">' + new Date(lastTick).toISOString().slice(0,19) + '</div>'; 
+    html += '<div class="score-refresh">' + formatTime(new Date()) + '</div>';
     html += '</td></tr></table>';
 
     /* ---- Forecast table with values, clickable days ---- */
