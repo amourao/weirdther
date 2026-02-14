@@ -106,6 +106,58 @@ function daysIntoYear(date) {
     return (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(date.getFullYear(), 0, 0)) / 86400000;
 }
 
+/**
+ * Filters historical data by day-of-year window and climate normal years
+ * @param {Array} values - Historical values
+ * @param {Array} dates - Historical dates (ISO strings)
+ * @param {string} currentDate - Current date (ISO string)
+ * @param {number} delta - Days before/after to include
+ * @param {Object} climateNormal - {start: year, end: year}
+ * @returns {Object} {values: Array, dates: Array} - Filtered and sorted arrays
+ */
+function filterHistoricalByDateWindow(values, dates, currentDate, delta, climateNormal) {
+    var currentDateObj = parseDate(currentDate);
+    var startDayOfYear = daysIntoYear(currentDateObj) - delta;
+    var endDayOfYear = daysIntoYear(currentDateObj) + delta;
+
+    var combined = [];
+    for (var i = 0; i < dates.length; i++) {
+        if (values[i] == null) continue;
+
+        var dateObj = parseDate(dates[i]);
+        var dayOfYear = daysIntoYear(dateObj);
+        var year = dateObj.getFullYear();
+
+        // Check day-of-year window (handles year wraparound)
+        var inWindow;
+        if (endDayOfYear >= startDayOfYear) {
+            inWindow = dayOfYear >= startDayOfYear && dayOfYear <= endDayOfYear;
+        } else {
+            // Year wraparound case (e.g., December to January)
+            inWindow = dayOfYear >= startDayOfYear || dayOfYear <= endDayOfYear;
+        }
+
+        // Check climate normal years
+        var inYearRange = year >= climateNormal.start && year <= climateNormal.end;
+
+        if (inWindow && inYearRange) {
+            combined.push([dates[i], values[i]]);
+        }
+    }
+
+    // Sort by value
+    combined.sort(function(a, b) { return a[1] - b[1]; });
+
+    var filteredDates = [];
+    var filteredValues = [];
+    for (var j = 0; j < combined.length; j++) {
+        filteredDates.push(combined[j][0]);
+        filteredValues.push(combined[j][1]);
+    }
+
+    return { dates: filteredDates, values: filteredValues };
+}
+
 function getUnitString(units) {
     if (units === "imperial") return WEIRDTHER_CONFIG.IMPERIAL_UNIT_STRING;
     return WEIRDTHER_CONFIG.METRIC_UNIT_STRING;

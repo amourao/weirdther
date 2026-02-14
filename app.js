@@ -340,7 +340,13 @@ async function getWeather(){
     const start_year = CLIMATE_NORMALS[climateNormalIndex]["start"];
     const end_year = CLIMATE_NORMALS[climateNormalIndex]["end"];
 
-    const historical = await getHistoricalWeather([latitude, longitude], date, delta, start_year, end_year, units, true);
+    // Use selected date as center, but fetch wider range to cover all displayed dates
+    // Each displayed day will use its own ±delta window from this wider dataset
+    const rangeInDays = Math.ceil((delta_ends - delta_starts) / (1000 * 60 * 60 * 24));
+    const widerDelta = parseInt(delta) + Math.ceil(rangeInDays / 2);
+    console.log(`Historical data: center=${date.toISOString().split('T')[0]}, widerDelta=${widerDelta} (covers ${delta_starts.toISOString().split('T')[0]} to ${delta_ends.toISOString().split('T')[0]})`);
+
+    const historical = await getHistoricalWeather([latitude, longitude], date, widerDelta, start_year, end_year, units, true);
     const historical_grouped = groupByValue(historical);
     const historical_histogram = createHistogram(historical, latitude);
     const current_histograms = [...historical_histogram];
@@ -548,7 +554,10 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     data_days = combined.map((e) => e[0]);
     data = combined.map((e) => e[1]);
 
-
+    if (var_name === "temperature_2m_max" && current_series_days[0] === "2026-02-14") {
+        console.log(`[${var_name}] Historical data range:`, data_days[0], "to", data_days[data_days.length - 1]);
+        console.log(`[${var_name}] Climate normal:`, climateNormal);
+    }
 
     var mean = getMean(data);
     var median = getMedian(data);
@@ -567,7 +576,16 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
 
 
     for (var i = 0; i < current_series.length; i++) {
-        const result = computeVariableScore(var_name, data, data_days, current_series[i], current_series_days[i], latitude);
+        // Filter historical data to this specific day's ±delta window
+        // This ensures consistent scores regardless of which group the day is in
+        var filtered = filterHistoricalByDateWindow(data, data_days, current_series_days[i], parseInt(delta), climateNormal);
+        if (i === 0) {
+            console.log(`[${var_name}] First day: ${current_series_days[i]}, value: ${current_series[i]}, comparing against ${filtered.values.length} historical values`);
+        }
+        const result = computeVariableScore(var_name, filtered.values, filtered.dates, current_series[i], current_series_days[i], latitude);
+        if (i === 0) {
+            console.log(`[${var_name}] Result - percentile: ${(result.percentile * 100).toFixed(1)}%, score: ${result.score.toFixed(2)}`);
+        }
         series_percentile[0] += result.percentile;
         series_percentile[1] += result.firstIndex;
         series_percentile[2] += result.lastIndex;

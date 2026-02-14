@@ -213,6 +213,50 @@ function fetchForecast(lat, lon, units, callback) {
     httpGet(url, callback);
 }
 
+function fetchHistoricalRange(lat, lon, startDate, endDate, units, callback) {
+    var start = new Date(startDate);
+    var end = new Date(endDate);
+    var now = new Date();
+    var today = toISODate(now);
+
+    // Don't fetch future dates from archive API
+    if (toISODate(end) > today) {
+        end = now;
+    }
+
+    // If requesting only future dates, return null
+    if (toISODate(start) > today) {
+        console.log("Dates are in the future - forecast data will be used");
+        callback(null, null);
+        return;
+    }
+
+    // If start is after end, return null
+    if (start > end) {
+        callback(null, null);
+        return;
+    }
+
+    var url = "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat + "&longitude=" + lon +
+              "&start_date=" + toISODate(start) + "&end_date=" + toISODate(end) + "&daily=" + DAILY_VARS;
+    var us = getUnitString(units);
+    if (us) url += "&" + us;
+
+    console.log("Fetching historical range: " + toISODate(start) + " to " + toISODate(end));
+    console.log("Archive API URL:", url);
+    httpGet(url, function(err, data) {
+        if (err) {
+            console.log("Historical range fetch error:", err);
+        } else if (data && data.daily) {
+            console.log("Fetched historical data for dates:", data.daily.time);
+            console.log("Sample data - temperature_2m_max:", data.daily.temperature_2m_max);
+        } else {
+            console.log("No historical data returned (archive API may not have recent data yet)");
+        }
+        callback(err, data);
+    });
+}
+
 function fetchHistoricalYear(lat, lon, date, delta, year, units, callback) {
     var target = new Date(date.getTime());
     target.setFullYear(year);
@@ -291,10 +335,17 @@ function fetchAllHistorical(lat, lon, date, delta, startYear, endYear, units, on
 
     /* Fetch all years sequentially */
     var results = [];
+
+    // Cap endYear to current year, and exclude current year from historical comparison
+    var currentYear = new Date().getFullYear();
+    if (endYear > currentYear) {
+        endYear = currentYear;
+    }
+
     var total = endYear - startYear;
 
     function next(year) {
-        if (year > endYear) {
+        if (year >= endYear) {  // Use >= to exclude endYear (current year)
             var grouped = groupAllHistorical(results);
             callback(null, grouped);
             return;
@@ -319,8 +370,94 @@ function allZero(arr) {
     return true;
 }
 
+/**
+ * Merges forecast and historical data, preferring historical when available
+ * @param {Object} forecast - Forecast data {daily: {time: [], temp: [], ...}}
+ * @param {Object} historical - Historical data {daily: {time: [], temp: [], ...}}
+ * @returns {Object} Merged data in same format
+ */
+function mergeForecastHistorical(forecast, historical) {
+    var merged = {daily: {}};
+    var vars = VAR_LIST.slice();
+    vars.push("time");
 
-function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGrouped, latitude, units) {
+    console.log("Merging forecast (dates:", forecast.daily.time, ") with historical (dates:", historical && historical.daily ? historical.daily.time : "none", ")");
+
+    // Start with forecast data
+    for (var i = 0; i < vars.length; i++) {
+        var varName = vars[i];
+        merged.daily[varName] = forecast.daily[varName] ? forecast.daily[varName].slice() : [];
+    }
+
+    // Overwrite with historical data where available
+    if (historical && historical.daily) {
+        console.log("Historical data found - will merge", historical.daily.time.length, "days");
+        for (var j = 0; j < historical.daily.time.length; j++) {
+            var day = historical.daily.time[j];
+            var offset = merged.daily.time.indexOf(day);
+
+            if (offset === -1) {
+                // Day not in forecast, add it
+                console.log("Adding historical day not in forecast:", day);
+                merged.daily.time.push(day);
+                for (var k = 0; k < vars.length; k++) {
+                    if (vars[k] !== "time") {
+                        merged.daily[vars[k]].push(historical.daily[vars[k]] ? historical.daily[vars[k]][j] : null);
+                    }
+                }
+            } else {
+                // Day exists in forecast, overwrite with historical if non-null
+                var overwriteCount = 0;
+                for (var k = 0; k < vars.length; k++) {
+                    if (vars[k] !== "time") {
+                        var histVal = historical.daily[vars[k]] ? historical.daily[vars[k]][j] : null;
+                        if (histVal != null) {
+                            merged.daily[vars[k]][offset] = histVal;
+                            overwriteCount++;
+                        }
+                    }
+                }
+                if (overwriteCount > 0) {
+                    console.log("Merged historical data for", day, "- overwrote", overwriteCount, "values");
+                }
+            }
+        }
+    }
+
+    // Sort by time
+    var combined = [];
+    for (var i = 0; i < merged.daily.time.length; i++) {
+        var obj = {time: merged.daily.time[i]};
+        for (var k = 0; k < vars.length; k++) {
+            if (vars[k] !== "time") {
+                obj[vars[k]] = merged.daily[vars[k]][i];
+            }
+        }
+        combined.push(obj);
+    }
+    combined.sort(function(a, b) { return a.time < b.time ? -1 : (a.time > b.time ? 1 : 0); });
+
+    // Reconstruct merged.daily from sorted combined
+    for (var k = 0; k < vars.length; k++) {
+        merged.daily[vars[k]] = [];
+    }
+    for (var i = 0; i < combined.length; i++) {
+        for (var k = 0; k < vars.length; k++) {
+            merged.daily[vars[k]].push(combined[i][vars[k]]);
+        }
+    }
+
+    console.log("Merge complete - final dates:", merged.daily.time);
+    console.log("Sample merged temperature_2m_max:", merged.daily.temperature_2m_max);
+
+    return merged;
+}
+
+
+function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGrouped, latitude, units, delta, climateNormal) {
+    delta = delta || WEIRDTHER_CONFIG.DEFAULT_DELTA;
+    climateNormal = climateNormal || {start: 2000, end: 2030};
+
     var allScores = [];
     for (var d = 0; d < numDays; d++) {
         var idx = todayIndex + d;
@@ -352,8 +489,26 @@ function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGroup
             var curVal = forecastDaily[varName][idx];
             if (curVal == null) continue;
 
-            var result = computeVariableScore(varName, historicalGrouped[varName], historicalGrouped["time"], curVal, ds.date, latitude);
-            if (historicalGrouped[varName].length === 0) continue;
+            // Filter historical data by day-of-year window and climate normal years
+            var filtered = filterHistoricalByDateWindow(
+                historicalGrouped[varName],
+                historicalGrouped["time"],
+                ds.date,
+                delta,
+                climateNormal
+            );
+
+            if (d === 0) {
+                console.log("[" + varName + "] First day: " + ds.date + ", value: " + curVal + ", comparing against " + filtered.values.length + " historical values");
+            }
+
+            var result = computeVariableScore(varName, filtered.values, filtered.dates, curVal, ds.date, latitude);
+
+            if (d === 0) {
+                console.log("[" + varName + "] Result - percentile: " + (result.percentile * 100).toFixed(1) + "%, score: " + result.score.toFixed(2));
+            }
+
+            if (filtered.values.length === 0) continue;
 
             var pctile = result.percentile;
             var score = result.score;
@@ -577,8 +732,8 @@ function loadWeather(lat, lon, units, dateStr) {
     currentDateStr = dateStr;
     var date = parseDate(dateStr);
     var delta = DEFAULT_DELTA;
-    var endYear = new Date().getFullYear();
-    var startYear = 2000;
+    var endYear = 2030;  // Match app.js climate normal
+    var startYear = 2001;  // Match app.js climate normal
 
     show("error", "");
     show("results", "");
@@ -591,57 +746,92 @@ function loadWeather(lat, lon, units, dateStr) {
             return;
         }
 
-        showProgress("Loading historical data...", 0);
+        var todayIdx = -1;
+        for (var i = 0; i < forecast.daily.time.length; i++) {
+            if (forecast.daily.time[i] === dateStr) { todayIdx = i; break; }
+        }
+        if (todayIdx === -1) {
+            show("error", "Date " + dateStr + " not found in forecast.");
+            return;
+        }
 
-        fetchAllHistorical(lat, lon, date, delta, startYear, endYear, units,
-            function(done, total) {
-                showProgress("Loading historical data...", (done / total) * 100);
-            },
-            function(err, grouped) {
-                show("loading", "");
-                if (err || !grouped || !grouped.time || grouped.time.length === 0) {
-                    show("error", "Error loading historical data.");
-                    return;
-                }
+        showProgress("Loading current weather...", 10);
 
-                var todayIdx = -1;
-                for (var i = 0; i < forecast.daily.time.length; i++) {
-                    if (forecast.daily.time[i] === dateStr) { todayIdx = i; break; }
-                }
-                if (todayIdx === -1) {
-                    show("error", "Date " + dateStr + " not found in forecast.");
-                    return;
-                }
+        // Fetch historical data for the forecast date range to get actual values
+        // Note: Archive API has ~5 day delay, so forecast API data is used for recent dates
+        var forecastStart = forecast.daily.time[todayIdx];
+        var forecastEnd = forecast.daily.time[Math.min(todayIdx + NUM_FORECAST_DAYS - 1, forecast.daily.time.length - 1)];
 
-                /* Hide precip vars only if all zero in forecast AND zero is >= P50 historically */
-                var hideVars = {};
-                var precipVars = ["rain_sum", "snowfall_sum"];
-                for (var pv = 0; pv < precipVars.length; pv++) {
-                    var pvn = precipVars[pv];
-                    var fcAllZero = true;
-                    for (var fi = todayIdx; fi < todayIdx + NUM_FORECAST_DAYS && fi < forecast.daily.time.length; fi++) {
-                        if ((forecast.daily[pvn][fi] || 0) > 0) { fcAllZero = false; break; }
-                    }
-                    if (fcAllZero) {
-                        var hist = [];
-                        for (var hi = 0; hi < grouped[pvn].length; hi++) {
-                            if (grouped[pvn][hi] != null) hist.push(grouped[pvn][hi]);
-                        }
-                        hist.sort(function(a, b) { return a - b; });
-                        var zeroPct = hist.length > 0 ? findPercentileForValue(hist, 0) : 0.5;
-                        if (zeroPct >= 0.5) hideVars[pvn] = true;
-                    }
-                }
-
-                var scores = computeAllDayScores(forecast.daily, todayIdx, NUM_FORECAST_DAYS, grouped, lat, units);
-                if (scores.length === 0) {
-                    show("error", "No data to display.");
-                    return;
-                }
-
-                renderAll(scores, units, startYear, endYear, hideVars);
+        fetchHistoricalRange(lat, lon, forecastStart, forecastEnd, units, function(err, currentHistorical) {
+            showProgress("Loading historical data for comparison...", 30);
+            if (!currentHistorical) {
+                console.log("Using forecast data for current dates (archive API not available for recent dates)");
             }
-        );
+
+            // Use selected date as center, but fetch wider range to cover all forecast dates
+            // Each forecast day will use its own ±delta window from this wider dataset
+            var widerDelta = delta + NUM_FORECAST_DAYS - 1;  // Cover selected ±delta + all forecast days
+            console.log("Historical data: center=" + dateStr + ", widerDelta=" + widerDelta + " (covers all forecast dates " + forecastStart + " to " + forecastEnd + ")");
+
+            fetchAllHistorical(lat, lon, date, widerDelta, startYear, endYear, units,
+                function(done, total) {
+                    showProgress("Loading historical data...", 30 + (done / total) * 70);
+                },
+                function(err, grouped) {
+                    show("loading", "");
+                    if (err || !grouped || !grouped.time || grouped.time.length === 0) {
+                        show("error", "Error loading historical data.");
+                        return;
+                    }
+
+                    // Merge forecast with historical data for current dates
+                    var mergedForecast = mergeForecastHistorical(forecast, currentHistorical);
+
+                    // Re-find today's index in merged data
+                    todayIdx = -1;
+                    for (var i = 0; i < mergedForecast.daily.time.length; i++) {
+                        if (mergedForecast.daily.time[i] === dateStr) { todayIdx = i; break; }
+                    }
+                    if (todayIdx === -1) {
+                        show("error", "Date " + dateStr + " not found in merged data.");
+                        return;
+                    }
+
+                    /* Hide precip vars only if all zero in forecast AND zero is >= P50 historically */
+                    var hideVars = {};
+                    var precipVars = ["rain_sum", "snowfall_sum"];
+                    for (var pv = 0; pv < precipVars.length; pv++) {
+                        var pvn = precipVars[pv];
+                        var fcAllZero = true;
+                        for (var fi = todayIdx; fi < todayIdx + NUM_FORECAST_DAYS && fi < mergedForecast.daily.time.length; fi++) {
+                            if ((mergedForecast.daily[pvn][fi] || 0) > 0) { fcAllZero = false; break; }
+                        }
+                        if (fcAllZero) {
+                            var hist = [];
+                            for (var hi = 0; hi < grouped[pvn].length; hi++) {
+                                if (grouped[pvn][hi] != null) hist.push(grouped[pvn][hi]);
+                            }
+                            hist.sort(function(a, b) { return a - b; });
+                            var zeroPct = hist.length > 0 ? findPercentileForValue(hist, 0) : 0.5;
+                            if (zeroPct[0] >= 0.5) hideVars[pvn] = true;
+                        }
+                    }
+
+                    var delta = WEIRDTHER_CONFIG.DEFAULT_DELTA;
+                    var climateNormal = {start: startYear, end: endYear};
+                    console.log("Climate normal range:", climateNormal);
+                    console.log("Historical data year range:", grouped.time[0], "to", grouped.time[grouped.time.length - 1]);
+                    console.log("Total historical days:", grouped.time.length);
+                    var scores = computeAllDayScores(mergedForecast.daily, todayIdx, NUM_FORECAST_DAYS, grouped, lat, units, delta, climateNormal);
+                    if (scores.length === 0) {
+                        show("error", "No data to display.");
+                        return;
+                    }
+
+                    renderAll(scores, units, startYear, endYear, hideVars);
+                }
+            );
+        });
     });
 }
 
