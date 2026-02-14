@@ -12,6 +12,9 @@ body { margin: 0; padding: 0; background: white; color: black; }
 .hdr-right { text-align: right; white-space: nowrap; width: 1px; }
 #loading { font-size: 48px; padding: 30px 0; }
 #error { font-size: 48px; font-weight: bold; }
+.progress-container { width: 100%; height: 60px; background: #ddd; border: 2px solid black; margin: 20px 0; position: relative; }
+.progress-bar { height: 100%; background: black; width: 0%; transition: width 0.3s ease; }
+.progress-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 36px; font-weight: bold; color: #333; }
 /* Vars + Score side by side */
 .vars-row { border: none; width: 100%; margin: 0; }
 .vars-row td { border: none; padding: 0; vertical-align: top; }
@@ -171,6 +174,17 @@ function show(id, text) {
     if (!el) return;
     el.innerHTML = text;
     el.style.display = text ? "" : "none";
+}
+
+function showProgress(message, percent) {
+    var el = document.getElementById("loading");
+    if (!el) return;
+    var pct = Math.round(percent);
+    el.innerHTML = '<div>' + message + '</div>' +
+        '<div class="progress-container">' +
+        '<div class="progress-bar" style="width: ' + pct + '%"></div>' +
+        '</div>';
+    el.style.display = "";
 }
 
 function formatDateShort(dateStr) {
@@ -516,7 +530,8 @@ function getWeather(rain, snow, sunshinePct, wind, units) {
 }
 
 function getScoreLabel(score) {
-    if (score >= 99) return "UNPRECEDENTED";
+    if (score >= 99) return "EXTREME";
+    if (score >= 90) return "WEIRD";
     if (score > 70) return "UNUSUAL";
     if (score >= 30) return "MODERATE";
     return "TYPICAL";
@@ -764,11 +779,11 @@ function loadWeather(lat, lon, units, dateStr) {
             return;
         }
 
-        show("loading", "Loading historical data... 0%");
+        showProgress("Loading historical data...", 0);
 
         fetchAllHistorical(lat, lon, date, delta, startYear, endYear, units,
             function(done, total) {
-                show("loading", "Loading historical data... " + Math.round((done / total) * 100) + "%");
+                showProgress("Loading historical data...", (done / total) * 100);
             },
             function(err, grouped) {
                 show("loading", "");
