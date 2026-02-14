@@ -9,7 +9,7 @@ body { margin: 0; padding: 0; background: white; color: black; }
 #header { font-size: 42px; padding-bottom: 6px; border-bottom: 3px solid black; margin-bottom: 10px; }
 .hdr-row { border: none; width: 100%; }
 .hdr-row td { border: none; padding: 0; font-size: 42px; }
-.hdr-right { text-align: right; }
+.hdr-right { text-align: right; white-space: nowrap; width: 1px; }
 #loading { font-size: 48px; padding: 30px 0; }
 #error { font-size: 48px; font-weight: bold; }
 /* Vars + Score side by side */
@@ -39,7 +39,8 @@ table.fc .bld { font-weight: bold; color: white; background: black; }
 table.fc .bld-lo { font-weight: bold; color: white; background: gray; }
 table.fc a { color: black; text-decoration: underline; }
 /* Header controls */
-.loc-input { font-size: 36px; border: 1px solid gray; padding: 2px 6px; width: 70%; }
+.loc-form { display: -webkit-box; display: flex; margin: 0; padding: 0; }
+.loc-input { font-size: 36px; border: 1px solid gray; padding: 2px 6px; -webkit-box-flex: 1; flex: 1; min-width: 0; -webkit-box-sizing: border-box; box-sizing: border-box; }
 .go-btn { font-size: 36px; border: 1px solid gray; padding: 2px 8px; }
 .score-refresh { font-size: 36px; color: #555; }
 </style>
@@ -571,7 +572,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars) {
     var unitC = units === "metric" ? "<b>C</b>" : '<a href="' + metricUrl + '">C</a>';
     var unitF = units === "imperial" ? "<b>F</b>" : '<a href="' + imperialUrl + '">F</a>';
     show("header", '<table class="hdr-row"><tr>' +
-        '<td><form onsubmit="goLocation();return false;" style="margin:0;padding:0;"><input id="loc-input" class="loc-input" value="' + escapedName + '"><input type="submit" value="Go" class="go-btn"></form></td>' +
+        '<td><form onsubmit="goLocation();return false;" class="loc-form"><input id="loc-input" class="loc-input" value="' + escapedName + '"><input type="submit" value="Go" class="go-btn"></form></td>' +
         '<td class="hdr-right">' + unitC + '|' + unitF + ' ' + wx.icon + ' ' + dateLabel + '</td>' +
         '</tr></table>');
 
