@@ -327,8 +327,8 @@ async function getWeather(){
         return;
     } else if (date > delta_starts) {
         // delta is in days
-        currentA = await getCurrentWeather([latitude, longitude], units);
-        currentB = await getHistoricalWeatherCurrent([latitude, longitude], date, delta, units);
+        const currentA = await getCurrentWeather([latitude, longitude], units);
+        const currentB = await getHistoricalWeatherCurrent([latitude, longitude], date, delta, units);
 
         current = mergeCurrentHistorical(currentA, currentB, delta_starts.toISOString().slice(0, 10), delta_ends.toISOString().slice(0, 10));
     } else {
@@ -342,10 +342,10 @@ async function getWeather(){
 
     const historical = await getHistoricalWeather([latitude, longitude], date, delta, start_year, end_year, units, true);
     const historical_grouped = groupByValue(historical);
-    const historical_histogram = createHistogram(historical);
+    const historical_histogram = createHistogram(historical, latitude);
     const current_histograms = [...historical_histogram];
     for (var i = 0; i < current.length; i++) {
-        current_histograms.push(...createHistogram([current[i]]));
+        current_histograms.push(...createHistogram([current[i]], latitude));
     }
     const gg = groupHistogramsByValue(current_histograms);
     const varsToGetDaily = VARS_TO_GET_DAILY.split(",");
@@ -356,7 +356,7 @@ async function getWeather(){
     document.getElementById('loading').innerHTML = "";
 
     for (const varName of varsToGetDaily) {
-        let chart = createAsciiChart(varName, gg[varName], currentVal[varName], date, historical_grouped[varName].slice());
+        let chart = createAsciiChart(varName, gg[varName], currentVal[varName], date, latitude, historical_grouped[varName].slice());
         document.getElementById('chart').innerHTML += chart;
     }
 
@@ -365,7 +365,7 @@ async function getWeather(){
 
         response["results"][info[0]] = JSON.parse(JSON.stringify(current[info[1]]["daily"]));
             for (var i = 0; i < response["results"][info[0]]["sunshine_duration"].length; i++) {
-                var correctionFactor = calculateDaylightCorrectionFactor(new Date(current[info[1]]["daily"]["time"][i])) * 3600;
+                var correctionFactor = getDaylightHours(current[info[1]]["daily"]["time"][i], latitude) * 3600;
                 response["results"][info[0]]["sunshine_duration"][i] /= correctionFactor;
             }
             response["results"][info[0]]["percentiles"] = {};
@@ -392,7 +392,7 @@ async function getWeather(){
             if (varName == "time") {
                 continue;
             }
-            const datas = friendlyStats(historical_grouped[varName], historical_grouped["time"], current[info[1]]["daily"][varName], current[info[1]]["daily"]["time"], varName, units, delta, info[1], CLIMATE_NORMALS[climateNormalIndex]);
+            const datas = friendlyStats(historical_grouped[varName], historical_grouped["time"], current[info[1]]["daily"][varName], current[info[1]]["daily"]["time"], varName, units, delta, info[1], CLIMATE_NORMALS[climateNormalIndex], latitude);
             if (datas.length == 0) {
                 delete response["results"][info[0]][varName];
                 continue;
@@ -471,33 +471,8 @@ function parseDate(dateString) {
     return isNaN(date.getTime()) ? null : date;
 }
 
-function findPercentileForValue(data, value) {
-    // find first index greater than value
-    var firstIndex = data.findIndex((x) => x >= value);
-    var lastIndex = data.findIndex((x) => x > value);
-    if (firstIndex === -1 && lastIndex === -1) {
-        return [1.01, firstIndex, lastIndex];
-    }
-    if (firstIndex === -1 || (firstIndex === 0 && lastIndex === 0)) {
-        return [-0.01, firstIndex, lastIndex];
-    }
-    if (firstIndex === 0 && lastIndex === 1) {
-        return [0, firstIndex, lastIndex];
-    }
-    if (lastIndex === -1) {
-        return [1, firstIndex, lastIndex];
-    }
-    if (firstIndex <= data.length/2 && lastIndex >= data.length/2) {
-        return [0.5, firstIndex, lastIndex];
-    }
-    const percentileLeft = firstIndex / data.length;
-    const percentileRight = lastIndex / data.length;
-
-    // get the percentile value that is closest to 0.5, don't interpolate
-    const percentile = Math.abs(percentileLeft - 0.5) < Math.abs(percentileRight - 0.5) ? percentileLeft : percentileRight;
-    return [percentile, firstIndex, lastIndex];
-
-}
+// findPercentileForValue is provided by weirdther-core.js
+// Returns [percentile, firstIndex, lastIndex]
 
 
 function findPercentileForSpan(data, value) {
@@ -511,25 +486,8 @@ function findPercentileForSpan(data, value) {
 }
 
 
-function getPercentile(data, percentile) {
-    const index = Math.floor(data.length * percentile);
-    return data[index];
-}
-
-function getMedian(data) {
-    return getPercentile(data, 0.5);
-}
-
-function getMean(data) {
-    return data.reduce((a, b) => a + b, 0) / data.length;
-}
-
-function getStd(data) {
-    const mean = getMean(data);
-    const sqDiffs = data.map((value) => Math.pow(value - mean, 2));
-    const avgSqDiff = getMean(sqDiffs);
-    return Math.sqrt(avgSqDiff);
-}
+// Statistical functions provided by weirdther-core.js:
+// getPercentile, getMedian, getMean, getStd
 
 // maxValues is a dict of varName -> value Count histogram
 function maxValuesToValues(maxValues) {
@@ -542,26 +500,17 @@ function maxValuesToValues(maxValues) {
     return values;
 }
 
-function daysIntoYear(date){
-    return (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(date.getFullYear(), 0, 0)) / 24 / 60 / 60 / 1000;
-}
+// daysIntoYear is provided by weirdther-core.js
 
-function friendlyStats(data, data_days, current_series, current_series_days, var_name, unit_type, delta, type, climateNormal) {
+function friendlyStats(data, data_days, current_series, current_series_days, var_name, unit_type, delta, type, climateNormal, latitude) {
     // deep copy data
     data = data.slice();
     data_days = data_days.slice();
     current_series = current_series.slice();
     current_series_days = current_series_days.slice();
 
+    var decimalPlaces = 1;
     if (var_name === "sunshine_duration") {
-        for (var i = 0; i < data.length; i++) {
-            var correctionFactor = calculateDaylightCorrectionFactor(new Date(data_days[i])) * 36;
-            data[i] /= correctionFactor;
-        }
-        for (var i = 0; i < current_series.length; i++) {
-            var correctionFactor = calculateDaylightCorrectionFactor(new Date(current_series_days[i])) * 36;
-            current_series[i] /= correctionFactor;
-        }
         decimalPlaces = 0;
     }
 
@@ -593,9 +542,9 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
         } else {
             return day_of_year >= start_day_of_year || day_of_year <= end_day_of_year;
         }
-    }() && new Date(e[0]).getFullYear() >= climateNormal.start 
-        && new Date(e[0]).getFullYear() <= climateNormal.end 
-    ).sort((a, b) => parseFloat(a[1]) - parseFloat(b[1]));
+    }() && new Date(e[0]).getFullYear() >= climateNormal.start
+        && new Date(e[0]).getFullYear() <= climateNormal.end
+    );
     data_days = combined.map((e) => e[0]);
     data = combined.map((e) => e[1]);
 
@@ -613,25 +562,21 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     var scoresSum = [];
     var percentiles = [];
     var percentilesRaw = [];
-    var decimalPlaces = 1;
+    var normalizedSeriesValues = [];
 
 
 
     for (var i = 0; i < current_series.length; i++) {
-        const percentileData = findPercentileForValue(data, current_series[i]);
-        series_percentile[0] += percentileData[0];
-        series_percentile[1] += percentileData[1];
-        series_percentile[2] += percentileData[2];
-        percentilesRaw.push(percentileData[0]);
-        const diff = Math.abs(percentileData[0] - 0.5);
+        const result = computeVariableScore(var_name, data, data_days, current_series[i], current_series_days[i], latitude);
+        series_percentile[0] += result.percentile;
+        series_percentile[1] += result.firstIndex;
+        series_percentile[2] += result.lastIndex;
+        percentilesRaw.push(result.percentile);
+        normalizedSeriesValues.push(result.normalizedValue);
+        const diff = Math.abs(result.percentile - 0.5);
         percentiles.push(diff+0.5);
-        score = diff;
-        if (diff > 0.3) {
-            score = diff * 2;
-        }
-        score = Math.pow(score, 2);
-        scores.push(score);
-        if (series_percentile[1] == 0 && series_percentile[2] == -1)
+        scores.push(result.score);
+        if (result.firstIndex == 0 && result.lastIndex == -1)
             scoresSum.push(0);
         else
             scoresSum.push(1);
@@ -640,13 +585,31 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     series_percentile[1] /= current_series.length;
     series_percentile[2] /= current_series.length;
 
-    if (series_min_max[0] === series_min_max[1]) {
-        series_min_max = series_min_max[0].toFixed(decimalPlaces) + "";
+    // Use normalized values for display if sunshine_duration
+    var displaySeriesValues = var_name === "sunshine_duration" ? normalizedSeriesValues : current_series;
+    series_mean = getMean(displaySeriesValues);
+    series_median = getMedian(displaySeriesValues);
+    var displaySeriesMinMax = [Math.min(...displaySeriesValues), Math.max(...displaySeriesValues)];
+
+    if (displaySeriesMinMax[0] === displaySeriesMinMax[1]) {
+        series_min_max = displaySeriesMinMax[0].toFixed(decimalPlaces) + "";
     } else {
-        series_min_max = series_min_max[0].toFixed(decimalPlaces) + "/" + series_mean.toFixed(decimalPlaces) + "/" + series_min_max[1].toFixed(decimalPlaces);
+        series_min_max = displaySeriesMinMax[0].toFixed(decimalPlaces) + "/" + series_mean.toFixed(decimalPlaces) + "/" + displaySeriesMinMax[1].toFixed(decimalPlaces);
     }
 
-    var gradient = generateSpan(current_series, current_series_days, data, data_days, var_name, unit_type);
+    // Normalize historical data for gradient if sunshine_duration
+    var gradientHistData = data;
+    if (var_name === "sunshine_duration") {
+        gradientHistData = [];
+        for (var i = 0; i < data.length; i++) {
+            if (data[i] != null && data_days[i]) {
+                var dlHours = getDaylightHours(data_days[i], latitude);
+                gradientHistData.push((dlHours > 0) ? data[i] / (dlHours * 36) : 0);
+            }
+        }
+    }
+
+    var gradient = generateSpan(displaySeriesValues, current_series_days, gradientHistData, data_days, var_name, unit_type);
 
     var qualifier = "";
     var boldStart = "";
@@ -709,7 +672,7 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
  
 }
 
-function printStats(data, current_value, var_name, current_date) {
+function printStats(data, current_value, var_name, current_date, latitude) {
     data = data.sort((a, b) => parseFloat(a) - parseFloat(b));
     var mean = getMean(data);
     var std = getStd(data);
@@ -720,7 +683,7 @@ function printStats(data, current_value, var_name, current_date) {
     var p95 = getPercentile(data, 0.95);
     var percentile = findPercentileForValue(data, current_value);
     if (var_name === "sunshine_duration") {
-        var correctionFactor = calculateDaylightCorrectionFactor(new Date(current_date)) * 36;
+        var correctionFactor = getDaylightHours(current_date, latitude) * 36;
         mean = mean / correctionFactor;
         median = median / correctionFactor;
         std = std / correctionFactor;
@@ -958,34 +921,11 @@ function mergeCurrentHistorical(current, historical, start, end) {
     return {"daily": merged};
 }
 
-function groupByValue(datas) {
-    var perValue = {};
-    for (var i = 0; i < datas.length; i++) {
-        var data = datas[i];
-        for (var j = 0; j < data["daily"]["time"].length; j++) {
-            var day = data["daily"]["time"][j];
-            var vars = VARS_TO_GET_DAILY.split(",");
-            for (var k = 0; k < vars.length; k++) {
-                var varName = vars[k] + "";
-                if (!(varName in perValue)) {
-                    perValue[varName] = [];
-                }
-                if (varName in data["daily"]) {
-                    var val = data["daily"][varName][j];
-                    perValue[varName].push(val);
-                }
-            }
-            if (!("time" in perValue)) {
-                perValue["time"] = [];
-            }
-            perValue["time"].push(day);
-        }
-    }
-    return perValue;
-}
+// groupByValue is the same as groupAllHistorical from weirdther-core.js
+var groupByValue = groupAllHistorical;
 
 
-function createHistogram(datas, current_date = null) {
+function createHistogram(datas, latitude, current_date = null) {
     // group by value
     // sample {"latitude": 39.47276, "longitude": -8.589203, "generationtime_ms": 0.11706352233886719, "utc_offset_seconds": 0, "timezone": "GMT", "timezone_abbreviation": "GMT", "elevation": 42.0, "daily_units": {"time": "iso8601", "temperature_2m_max": "\u00b0C", "temperature_2m_min": "\u00b0C", "precipitation_sum": "mm", "rain_sum": "mm", "snowfall_sum": "cm"}, "daily": {"time": ["2000-01-25", "2000-01-26", "2000-01-27", "2000-01-28", "2000-01-29", "2000-01-30", "2000-01-31", "2000-02-01", "2000-02-02", "2000-02-03", "2000-02-04"], "temperature_2m_max": [11.2, 12.7, 12.3, 14.8, 14.6, 16.7, 16.8, 16.5, 14.9, 18.6, 18.4], "temperature_2m_min": [-0.8, 2.7, 3.2, 5.9, 4.2, 2.4, 5.1, 12.1, 10.2, 7.5, 7.3], "precipitation_sum": [0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 15.9, 0.0, 0.0, 0.0], "rain_sum": [0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 15.9, 0.0, 0.0, 0.0], "snowfall_sum": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}}
     var perValue = {};
@@ -1000,7 +940,7 @@ function createHistogram(datas, current_date = null) {
                 var varName = vars[k] + "";
                 var val = data["daily"][varName][j];
                 if (varName === "sunshine_duration") {
-                    var correctionFactor = calculateDaylightCorrectionFactor(new Date(day)) * 36;
+                    var correctionFactor = getDaylightHours(day, latitude) * 36;
                     val = val / correctionFactor;
                 }
                 val = Math.round(val) + "";
@@ -1074,7 +1014,7 @@ function groupHistogramsByValue(datas) {
 
 
 
-function createAsciiChart(name, groupedData, currentVal, currentDate, historical_grouped = null) {
+function createAsciiChart(name, groupedData, currentVal, currentDate, latitude, historical_grouped = null) {
     // print simple ascii chart, with one line per value
     if (Object.keys(groupedData).length === 0) {
         return;
@@ -1149,7 +1089,7 @@ function createAsciiChart(name, groupedData, currentVal, currentDate, historical
         line += SEPARATOR.repeat(COLUMN_WIDTH-varValueString.length) + varValueString;
     }
     line += "<br>";
-    const stats = printStats(historical_grouped, currentVal, name, currentDate);
+    const stats = printStats(historical_grouped, currentVal, name, currentDate, latitude);
     return `<div style="overflow-x: scroll"><div class="chart-container">${asciiTable}${line}${name}<br>${stats}<br></br></div></div>`;
 }
 
@@ -1280,28 +1220,4 @@ function generateOnceEveryXDays(percentile, climateNormal) {
     return `, should happen once every ${days} days`;    
 }
 
-function calculateDaylightCorrectionFactor(day) {
-    // Calculate the day of the year (1-365)
-    var lat = parseFloat(document.getElementById("latitude").value);
-    const start = new Date(day.getFullYear(), 0, 0);
-    const diff = day - start;
-    const oneDay = 1000 * 60 * 60 * 24;
-    const dayOfYear = Math.floor(diff / oneDay);
-
-    return calculateDayLength(lat, dayOfYear);
-}
-
-function calculateDayLength(latitude, dayOfYear) {
-  const declination = 23.44 * Math.sin((360/365) * (284 + dayOfYear) * Math.PI/180);
-  const latRad = latitude * Math.PI/180;
-  const decRad = declination * Math.PI/180;
-  
-  const cosHourAngle = -Math.tan(latRad) * Math.tan(decRad);
-  
-  // Handle polar day/night
-  if (cosHourAngle > 1) return 0;    // Polar night
-  if (cosHourAngle < -1) return 24;  // Polar day
-  
-  const hourAngle = Math.acos(cosHourAngle) * 180/Math.PI;
-  return (2/15) * hourAngle;
-}
+// calculateDayLength and getDaylightHours are provided by weirdther-core.js

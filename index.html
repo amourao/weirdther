@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Weirdther Widget</title>
+    <script src="weirdther-core.js"></script>
     <script src="app.js"></script>
     <link rel="stylesheet" href="widget.css">
 </head>
@@ -517,17 +518,35 @@
         }
 
         window.onload = async function() {
-            // Get the default unit (from localStorage or locale detection)
-            const defaultUnit = getDefaultUnit();
-            
+            // Parse URL parameters (supports both short and long names)
+            const urlParams = parseUrlParams();
+
+            // Get the default unit (from URL, localStorage, or locale detection)
+            const defaultUnit = urlParams.units || getDefaultUnit();
+
+            // Populate form fields from URL parameters or defaults
+            if (urlParams.location) {
+                document.getElementById('location').value = urlParams.location;
+                document.getElementById('locationInput').value = urlParams.location;
+            }
+            if (urlParams.latitude) {
+                document.getElementById('latitude').value = urlParams.latitude;
+            }
+            if (urlParams.longitude) {
+                document.getElementById('longitude').value = urlParams.longitude;
+            }
+
             // set default parameters for hidden fields
-            document.getElementById('date').value = document.getElementById('date').innerHTML || new Date().toISOString().split('T')[0];
-            document.getElementById('delta').value = document.getElementById('delta').innerHTML || '5';
+            document.getElementById('date').value = urlParams.date || document.getElementById('date').innerHTML || new Date().toISOString().split('T')[0];
+            document.getElementById('delta').value = urlParams.delta || document.getElementById('delta').innerHTML || '5';
             document.getElementById('units').value = defaultUnit;
-            
+            if (urlParams.climate_normal) {
+                document.getElementById('climate_normal').value = urlParams.climate_normal;
+            }
+
             // Update button states
             updateUnitButtons();
-            
+
             await start();
             initializeWidget();
         };

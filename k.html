@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><title>Weirdther</title>
+<script src="weirdther-core.js"></script>
 <style>
 body { margin: 0; padding: 0; background: white; color: black; }
 #wrapper { padding: 18px 22px; font-family: Helvetica, Arial, sans-serif; -webkit-box-sizing: border-box; box-sizing: border-box; overflow: hidden; }
@@ -139,35 +140,7 @@ function clearTodayCache(lat, lon, units) {
 
 /* ========== UTILITY ========== */
 
-function parseQueryString() {
-    var qs = window.location.search.substring(1);
-    var params = {"l": "Lisbon, Portugal"};
-    if (!qs) return params;
-    var pairs = qs.split("&");
-    for (var i = 0; i < pairs.length; i++) {
-        var pair = pairs[i].split("=");
-        if (pair.length === 2) {
-            params[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1]);
-        }
-    }
-    return params;
-}
-
-function toISODate(d) {
-    var y = d.getFullYear();
-    var m = d.getMonth() + 1;
-    var day = d.getDate();
-    return y + "-" + (m < 10 ? "0" : "") + m + "-" + (day < 10 ? "0" : "") + day;
-}
-
-function parseDate(str) {
-    var parts = str.split("-");
-    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-}
-
-function daysIntoYear(date) {
-    return (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(date.getFullYear(), 0, 0)) / 86400000;
-}
+// parseUrlParams is provided by weirdther-core.js
 
 function show(id, text) {
     var el = document.getElementById(id);
@@ -192,31 +165,6 @@ function formatDateShort(dateStr) {
     var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return days[d.getDay()] + " " + d.getDate() + " " + months[d.getMonth()];
-}
-
-function isScoreVar(varName) {
-    for (var i = 0; i < SCORE_VARS.length; i++) {
-        if (SCORE_VARS[i] === varName) return true;
-    }
-    return false;
-}
-
-/* ========== DAYLIGHT ========== */
-
-function calculateDayLength(latitude, dayOfYear) {
-    var declination = 23.44 * Math.sin((360 / 365) * (284 + dayOfYear) * Math.PI / 180);
-    var latRad = latitude * Math.PI / 180;
-    var decRad = declination * Math.PI / 180;
-    var cosHA = -Math.tan(latRad) * Math.tan(decRad);
-    if (cosHA > 1) return 0;
-    if (cosHA < -1) return 24;
-    var hourAngle = Math.acos(cosHA) * 180 / Math.PI;
-    return (2 / 15) * hourAngle;
-}
-
-function getDaylightHours(dateStr, latitude) {
-    var d = parseDate(dateStr);
-    return calculateDayLength(latitude, daysIntoYear(d));
 }
 
 /* ========== HTTP ========== */
@@ -257,10 +205,6 @@ function geocode(location, callback) {
     });
 }
 
-function getUnitString(units) {
-    if (units === "imperial") return "temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
-    return "";
-}
 
 function fetchForecast(lat, lon, units, callback) {
     var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=" + lat + "&longitude=" + lon + "&daily=" + DAILY_VARS;
@@ -350,7 +294,7 @@ function fetchAllHistorical(lat, lon, date, delta, startYear, endYear, units, on
     var total = endYear - startYear;
 
     function next(year) {
-        if (year >= endYear) {
+        if (year > endYear) {
             var grouped = groupAllHistorical(results);
             callback(null, grouped);
             return;
@@ -375,50 +319,6 @@ function allZero(arr) {
     return true;
 }
 
-function groupAllHistorical(datas) {
-    var grouped = {};
-    var k;
-    for (k = 0; k < VAR_LIST.length; k++) grouped[VAR_LIST[k]] = [];
-    grouped["time"] = [];
-
-    for (var i = 0; i < datas.length; i++) {
-        var daily = datas[i].daily;
-        for (var j = 0; j < daily.time.length; j++) {
-            grouped["time"].push(daily.time[j]);
-            for (k = 0; k < VAR_LIST.length; k++) {
-                var vn = VAR_LIST[k];
-                var val = (daily[vn] && daily[vn][j] != null) ? daily[vn][j] : null;
-                grouped[vn].push(val);
-            }
-        }
-    }
-    return grouped;
-}
-
-function findPercentileForValue(sortedData, value) {
-    var firstIndex = -1, lastIndex = -1, i;
-    for (i = 0; i < sortedData.length; i++) {
-        if (sortedData[i] >= value) { firstIndex = i; break; }
-    }
-    for (i = 0; i < sortedData.length; i++) {
-        if (sortedData[i] > value) { lastIndex = i; break; }
-    }
-    if (firstIndex === -1 && lastIndex === -1) return 1.01;
-    if (firstIndex === -1 || (firstIndex === 0 && lastIndex === 0)) return -0.01;
-    if (firstIndex === 0 && lastIndex === 1) return 0;
-    if (lastIndex === -1) return firstIndex === 0 ? 0.5 : 1;
-    if (firstIndex <= sortedData.length / 2 && lastIndex >= sortedData.length / 2) return 0.5;
-    var pL = firstIndex / sortedData.length;
-    var pR = lastIndex / sortedData.length;
-    return Math.abs(pL - 0.5) < Math.abs(pR - 0.5) ? pL : pR;
-}
-
-function computeWeirdtherScore(percentile) {
-    var diff = Math.abs(percentile - 0.5);
-    var score = diff;
-    if (diff > 0.3) score = diff * 2;
-    return score * score;
-}
 
 function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGrouped, latitude, units) {
     var allScores = [];
@@ -452,26 +352,12 @@ function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGroup
             var curVal = forecastDaily[varName][idx];
             if (curVal == null) continue;
 
-            var hist = [];
-            for (var h = 0; h < historicalGrouped[varName].length; h++) {
-                var hv = historicalGrouped[varName][h];
-                if (hv == null) continue;
-                if (varName === "sunshine_duration") {
-                    var hdl = getDaylightHours(historicalGrouped["time"][h], latitude);
-                    hv = (hdl > 0) ? hv / (hdl * 36) : 0;
-                }
-                hist.push(hv);
-            }
-            hist.sort(function(a, b) { return a - b; });
-            if (hist.length === 0) continue;
+            var result = computeVariableScore(varName, historicalGrouped[varName], historicalGrouped["time"], curVal, ds.date, latitude);
+            if (historicalGrouped[varName].length === 0) continue;
 
-            var cmpVal = curVal;
-            if (varName === "sunshine_duration") {
-                cmpVal = (dlHours > 0) ? curVal / (dlHours * 36) : 0;
-            }
-
-            var pctile = findPercentileForValue(hist, cmpVal);
-            var score = computeWeirdtherScore(pctile);
+            var pctile = result.percentile;
+            var score = result.score;
+            var cmpVal = result.normalizedValue;
 
             var qualifier = "";
             if (pctile < 0) qualifier = FRIENDLY[varName].lower + "!";
@@ -512,92 +398,24 @@ function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGroup
 
 /* ========== RENDERING ========== */
 
-function getWeather(rain, snow, sunshinePct, wind, units) {
-    var rMm = rain, sMm = snow, wKmh = wind;
-    if (units === "imperial") { rMm = rain * 25.4; sMm = snow * 25.4; wKmh = wind * 1.60934; }
-    var c = "", icon = "";
-    if (sMm > 0)               { c = "Snow";       icon = "&#10052;"; }
-    else if (rMm > 20)         { c = "Heavy Rain";  icon = "&#9730;"; }
-    else if (rMm > 0)          { c = "Rain";        icon = "&#9730;"; }
-    else if (sunshinePct < 0.10){ c = "Overcast";   icon = "&#9729;"; }
-    else if (sunshinePct < 0.30){ c = "Cloudy";     icon = "&#9729;"; }
-    else if (sunshinePct < 0.60){ c = "Pt.Cloudy";  icon = "&#9728;"; }
-    else if (sunshinePct < 0.85){ c = "Fair";       icon = "&#9728;"; }
-    else                        { c = "Sunny";      icon = "&#9728;"; }
-    if (wKmh >= 50) c += " +Gale";
-    else if (wKmh >= 25) c += " +Wind";
-    return {text: c, icon: icon};
-}
-
-function getScoreLabel(score) {
-    if (score >= 99) return "EXTREME";
-    if (score >= 90) return "WEIRD";
-    if (score > 70) return "UNUSUAL";
-    if (score >= 30) return "MODERATE";
-    return "TYPICAL";
-}
-
-function genOnceEvery(percentile, startYear, endYear) {
-    var p = 1 - Math.abs(0.5 - percentile) * 2;
-    var days = Math.round(1 / p);
-    if (percentile < 0 || percentile > 1) return "never in " + startYear + "-" + endYear + "!";
-    if (isNaN(days) || !isFinite(days)) return "once in " + startYear + "-" + endYear + "!";
-    if (days <= 1) return "every other day";
-    if (days >= 365) return "once every " + Math.round(days / 365) + "yr";
-    if (days >= 28 && days <= 32) return "once a month";
-    if (days >= 6 && days <= 8) return "once a week";
-    return "once every " + days + "d";
-}
-
-function pctPretty(p) {
-    var v = Math.round(p * 100);
-    if (v < 0) v = 0;
-    if (v > 100) v = 100;
-    if (v === 1) return "1st";
-    if (v === 2) return "2nd";
-    if (v === 3) return "3rd";
-    if (v === 21) return "21st";
-    if (v === 22) return "22nd";
-    if (v === 23) return "23rd";
-    if (v === 31) return "31st";
-    if (v === 32) return "32nd";
-    if (v === 33) return "33rd";
-    return v + "th";
-}
-
-function isUnusual(percentile) {
-    return percentile < 0.15 || percentile > 0.85;
-}
-
-function unusualClass(percentile) {
-    if (percentile < 0.15) return "bld-lo";
-    if (percentile > 0.85) return "bld";
-    return "";
-}
 
 function buildPageUrl(overrides) {
-    var params = parseQueryString();
-    var keys = ["l", "latitude", "longitude", "units", "date", "r", "s"];
+    var params = parseUrlParams();
+    var keys = ["location", "latitude", "longitude", "units", "date", "rotation", "scale"];
     var i, k;
     for (i = 0; i < keys.length; i++) {
         k = keys[i];
         if (overrides[k] !== undefined) params[k] = overrides[k];
     }
 
-    var qs = "";
-    for (i = 0; i < keys.length; i++) {
-        k = keys[i];
-        if (params[k] != null && params[k] !== "") {
-            qs += (qs ? "&" : "?") + k + "=" + encodeURIComponent(params[k]);
-        }
-    }
+    var qs = buildUrlQuery(params, keys);
     return window.location.pathname + qs;
 }
 
 function goLocation() {
     var inp = document.getElementById("loc-input");
     if (!inp || !inp.value) return;
-    window.location.href = buildPageUrl({"l": inp.value, "latitude": "", "longitude": "", "date": ""});
+    window.location.href = buildPageUrl({"location": inp.value, "latitude": "", "longitude": "", "date": ""});
 }
 
 function formatTime(d) {
@@ -611,16 +429,10 @@ function formatTime(d) {
 }
 
 function buildDateLink(dateStr) {
-    var params = parseQueryString();
-    var keys = ["l", "latitude", "longitude", "units", "r", "s"];
-    var qs = "";
-    for (var i = 0; i < keys.length; i++) {
-        if (params[keys[i]] != null && params[keys[i]] !== "") {
-            qs += (qs ? "&" : "?") + keys[i] + "=" + encodeURIComponent(params[keys[i]]);
-        }
-    }
-    qs += (qs ? "&" : "?") + "date=" + dateStr;
-    return qs;
+    var params = parseUrlParams();
+    params.date = dateStr;
+    var keys = ["location", "latitude", "longitude", "units", "rotation", "scale", "date"];
+    return buildUrlQuery(params, keys);
 }
 
 function fmtVal(varName, value, units) {
@@ -766,7 +578,7 @@ function loadWeather(lat, lon, units, dateStr) {
     var date = parseDate(dateStr);
     var delta = DEFAULT_DELTA;
     var endYear = new Date().getFullYear();
-    var startYear = endYear - HISTORICAL_YEARS;
+    var startYear = 2000;
 
     show("error", "");
     show("results", "");
@@ -838,12 +650,12 @@ setInterval(function() { window.location.reload(); }, 3600000);
 
 /* ========== INIT ========== */
 window.onload = function() {
-    var params = parseQueryString();
-    var loc = params["l"] || "";
+    var params = parseUrlParams({"location": "Lisbon, Portugal"});
+    var loc = params["location"] || "";
     var lat = params["latitude"] || "";
     var lon = params["longitude"] || "";
-    var rParam = params["r"] || "";
-    var sParam = params["s"] || "";
+    var rParam = params["rotation"] || "";
+    var sParam = params["scale"] || "";
 
     /* Get current units - from URL, localStorage, or locale detection */
     if (params["units"]) {
