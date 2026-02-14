@@ -39,9 +39,9 @@ table.fc .bld { font-weight: bold; color: white; background: black; }
 table.fc .bld-lo { font-weight: bold; color: white; background: gray; }
 table.fc a { color: black; text-decoration: underline; }
 /* Header controls */
-.loc-form { display: -webkit-box; display: flex; margin: 0; padding: 0; }
-.loc-input { font-size: 36px; border: 1px solid gray; padding: 2px 6px; -webkit-box-flex: 1; flex: 1; min-width: 0; -webkit-box-sizing: border-box; box-sizing: border-box; }
-.go-btn { font-size: 36px; border: 1px solid gray; padding: 2px 8px; }
+.loc-form { margin: 0; padding: 0; width: 100%; white-space: nowrap; }
+.loc-input { width: calc(100% - 80px); font-size: 36px; border: 1px solid gray; padding: 2px 6px; -webkit-box-sizing: border-box; box-sizing: border-box; vertical-align: top; }
+.go-btn { width: 70px; font-size: 36px; border: 1px solid gray; padding: 2px 8px; vertical-align: top; margin-left: -4px; }
 .score-refresh { font-size: 36px; color: #555; }
 </style>
 </head>
@@ -588,7 +588,11 @@ function goLocation() {
 function formatTime(d) {
     var h = d.getHours();
     var m = d.getMinutes();
-    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+    var day = d.getDate();
+    var month = d.getMonth() + 1;
+    var year = d.getFullYear();
+    return year + "-" + (month < 10 ? "0" : "") + month + "-" + (day < 10 ? "0" : "") + day + " " +
+           (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
 }
 
 function buildDateLink(dateStr) {
