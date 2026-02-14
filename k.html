@@ -32,6 +32,7 @@ table.vars .bld-lo td { font-weight: bold; color: white; background: gray; }
 table.fc { border-collapse: collapse; width: 100%; border: 2px solid black; }
 table.fc th, table.fc td { border: none; padding: 5px 7px; text-align: right; font-size: 40px; }
 table.fc th { background: #bbb; color: black; font-size: 36px; }
+table.fc th:first-child, table.fc td:first-child { width: 1px; white-space: nowrap; padding: 5px 4px; }
 table.fc .day-col { text-align: left; }
 table.fc .icon-col { font-size: 46px; text-align: center; width: 48px; }
 table.fc .bld { font-weight: bold; color: white; background: black; }
@@ -560,7 +561,8 @@ function renderAll(dayScores, units, startYear, endYear, hideVars) {
     var wx = getWeather(today.rain, today.snow, today.sunshinePct, today.wind, units);
     var label = getScoreLabel(today.weirdther);
     var dateLabel = isToday ? "Today" : formatDateShort(today.date);
-    var hidePrecip = hideVars["rain_sum"] && hideVars["snowfall_sum"];
+    var hideRain = !!hideVars["rain_sum"];
+    var hideSnow = !!hideVars["snowfall_sum"];
 
     /* ---- Update header: location input left, units+weather right ---- */
     var escapedName = locationName.replace(/"/g, '&quot;');
@@ -604,10 +606,10 @@ function renderAll(dayScores, units, startYear, endYear, hideVars) {
     html += '</td></tr></table>';
 
     /* ---- Forecast table with values, clickable days ---- */
-    html += '<div class="sep"></div>';
     html += '<table class="fc">';
     html += '<tr><th></th><th class="day-col">Day</th><th>&#9650;</th><th>&#9660;</th>';
-    if (!hidePrecip) html += '<th>&#9730;</th>';
+    if (!hideRain) html += '<th>&#9730;</th>';
+    if (!hideSnow) html += '<th>&#9731;</th>';
     html += '<th><b>&#8776;</b></th><th>&#9728;</th><th>W</th></tr>';
 
     for (var d = 0; d < dayScores.length; d++) {
@@ -618,27 +620,24 @@ function renderAll(dayScores, units, startYear, endYear, hideVars) {
         var rwx = getWeather(ds.rain, ds.snow, ds.sunshinePct, ds.wind, units);
         var link = buildDateLink(ds.date);
 
-        /* Which cells to style: unusual score vars */
         var cTempMax = ds.vars["temperature_2m_max"] ? unusualClass(ds.vars["temperature_2m_max"].raw) : "";
         var cTempMin = ds.vars["temperature_2m_min"] ? unusualClass(ds.vars["temperature_2m_min"].raw) : "";
         var cWind = ds.vars["wind_speed_10m_max"] ? unusualClass(ds.vars["wind_speed_10m_max"].raw) : "";
         var cSun = ds.vars["sunshine_duration"] ? unusualClass(ds.vars["sunshine_duration"].raw) : "";
-
         var sunPct = Math.round(ds.sunshinePct * 100) + "%";
 
         html += '<tr>';
         html += '<td class="icon-col">' + rwx.icon + '</td>';
-        html += '<td class="day-col"><a href="' + link + '" ' + (rowIsToday ? ' style="font-weight: bold;"' : '') + '>' + dayLabel + '</a></td>';
+        html += '<td class="day-col"><a href="' + link + '"' + (rowIsToday ? ' style="font-weight:bold"' : '') + '>' + dayLabel + '</a></td>';
         html += '<td' + (cTempMax ? ' class="' + cTempMax + '"' : '') + '>' + Math.round(ds.tempMax) + '</td>';
         html += '<td' + (cTempMin ? ' class="' + cTempMin + '"' : '') + '>' + Math.round(ds.tempMin) + '</td>';
-        if (!hidePrecip) {
+        if (!hideRain) {
             var cRain = ds.vars["rain_sum"] ? unusualClass(ds.vars["rain_sum"].raw) : "";
+            html += '<td' + (cRain ? ' class="' + cRain + '"' : '') + '>' + ds.rain.toFixed(1) + '</td>';
+        }
+        if (!hideSnow) {
             var cSnow = ds.vars["snowfall_sum"] ? unusualClass(ds.vars["snowfall_sum"].raw) : "";
-            var cPrecip = ds.snow > 0 ? cSnow : cRain;
-            var precip = ds.snow > 0
-                ? ds.snow.toFixed(1)
-                : ds.rain.toFixed(1);
-            html += '<td' + (cPrecip ? ' class="' + cPrecip + '"' : '') + '>' + precip + '</td>';
+            html += '<td' + (cSnow ? ' class="' + cSnow + '"' : '') + '>' + ds.snow.toFixed(1) + '</td>';
         }
         html += '<td' + (cWind ? ' class="' + cWind + '"' : '') + '>' + Math.round(ds.wind) + '</td>';
         html += '<td' + (cSun ? ' class="' + cSun + '"' : '') + '>' + sunPct + '</td>';
@@ -727,17 +726,23 @@ function loadWeather(lat, lon, units, dateStr) {
                     return;
                 }
 
-                /* Check if rain/snow are all zero in history + forecast */
+                /* Hide precip vars only if all zero in forecast AND zero is >= P50 historically */
                 var hideVars = {};
                 var precipVars = ["rain_sum", "snowfall_sum"];
                 for (var pv = 0; pv < precipVars.length; pv++) {
                     var pvn = precipVars[pv];
-                    if (allZero(grouped[pvn])) {
-                        var fcAllZero = true;
-                        for (var fi = todayIdx; fi < todayIdx + NUM_FORECAST_DAYS && fi < forecast.daily.time.length; fi++) {
-                            if ((forecast.daily[pvn][fi] || 0) > 0) { fcAllZero = false; break; }
+                    var fcAllZero = true;
+                    for (var fi = todayIdx; fi < todayIdx + NUM_FORECAST_DAYS && fi < forecast.daily.time.length; fi++) {
+                        if ((forecast.daily[pvn][fi] || 0) > 0) { fcAllZero = false; break; }
+                    }
+                    if (fcAllZero) {
+                        var hist = [];
+                        for (var hi = 0; hi < grouped[pvn].length; hi++) {
+                            if (grouped[pvn][hi] != null) hist.push(grouped[pvn][hi]);
                         }
-                        if (fcAllZero) hideVars[pvn] = true;
+                        hist.sort(function(a, b) { return a - b; });
+                        var zeroPct = hist.length > 0 ? findPercentileForValue(hist, 0) : 0.5;
+                        if (zeroPct >= 0.5) hideVars[pvn] = true;
                     }
                 }
 
