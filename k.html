@@ -2,11 +2,10 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Weirdther</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><title>Weirdther</title>
 <style>
 body { margin: 0; padding: 0; background: white; color: black; }
-#wrapper { padding: 18px 22px; font-family: Helvetica, Arial, sans-serif; -webkit-box-sizing: border-box; box-sizing: border-box; }
+#wrapper { padding: 18px 22px; font-family: Helvetica, Arial, sans-serif; -webkit-box-sizing: border-box; box-sizing: border-box; overflow: hidden; }
 #header { font-size: 42px; padding-bottom: 6px; border-bottom: 3px solid black; margin-bottom: 10px; }
 .hdr-row { border: none; width: 100%; }
 .hdr-row td { border: none; padding: 0; font-size: 42px; }
@@ -20,21 +19,19 @@ body { margin: 0; padding: 0; background: white; color: black; }
 .score-num { font-size: 156px; font-weight: bold; line-height: 1; padding: 0 6px; }
 .score-lbl { font-size: 66px; font-weight: bold; letter-spacing: 2px; padding: 0 6px; }
 .score-num-inv { font-size: 156px; font-weight: bold; line-height: 1; padding: 0 6px; color: white; background: black; display: inline-block; }
-.score-lbl-inv { font-size: 66px; font-weight: bold; letter-spacing: 2px; padding: 0 6px; color: white; background: black; display: inline-block; }
 .score-weirdther { font-size: 48px;}
-.score-freq { font-size: 48px; color: gray; }
+.score-freq { font-size: 48px; color: #333; }
 /* Variable breakdown */
 table.vars { border-collapse: collapse; width: 100%; margin: 0; }
-table.vars td { border: none; border-bottom: 1px solid #ddd; padding: 2px 6px; font-size: 52px; }
+table.vars td { border: none; padding: 2px 6px; font-size: 52px; }
 table.vars .vi { font-size: 54px; text-align: center; width: 56px; }
-table.vars .pct { color: #777; text-align: right; }
+table.vars .pct { color: #333; text-align: right; }
 table.vars .bld td { font-weight: bold; color: white; background: black; }
 table.vars .bld-lo td { font-weight: bold; color: white; background: gray; }
 /* Forecast */
-.sep { border-top: 3px solid black; margin: 8px 0; }
-table.fc { border-collapse: collapse; width: 100%; }
-table.fc th, table.fc td { border: 1px solid black; padding: 5px 7px; text-align: right; font-size: 40px; }
-table.fc th { background: lightgray; color: black; font-size: 36px; }
+table.fc { border-collapse: collapse; width: 100%; border: 2px solid black; }
+table.fc th, table.fc td { border: none; padding: 5px 7px; text-align: right; font-size: 40px; }
+table.fc th { background: #bbb; color: black; font-size: 36px; }
 table.fc .day-col { text-align: left; }
 table.fc .icon-col { font-size: 46px; text-align: center; width: 48px; }
 table.fc .bld { font-weight: bold; color: white; background: black; }
@@ -43,7 +40,7 @@ table.fc a { color: black; text-decoration: underline; }
 /* Header controls */
 .loc-input { font-size: 36px; border: 1px solid gray; padding: 2px 6px; width: 70%; }
 .go-btn { font-size: 36px; border: 1px solid gray; padding: 2px 8px; }
-.score-refresh { font-size: 36px; color: lightgray; }
+.score-refresh { font-size: 36px; color: #555; }
 </style>
 </head>
 <body>
@@ -757,14 +754,7 @@ function loadWeather(lat, lon, units, dateStr) {
 }
 
 /* ========== AUTO REFRESH ========== */
-var lastTick = new Date().getTime();
-setInterval(function() {
-    var now = new Date().getTime();
-    if (now - lastTick >= 3600000 ) {
-        window.location.reload();
-    }
-    lastTick = now;
-}, 5000000);
+setInterval(function() { window.location.reload(); }, 3600000);
 
 /* ========== INIT ========== */
 window.onload = function() {
@@ -776,7 +766,6 @@ window.onload = function() {
     var sParam = params["s"] || "";
     currentUnits = params["units"] || "metric";
     currentDateStr = params["date"] || toISODate(new Date());
-    //     currentDateStr = params["date"] || toISODate(new Date("2026-02-20"));
 
     var zoom = 1;
     if (sParam) {
@@ -784,6 +773,7 @@ window.onload = function() {
         if (isNaN(zoom) || zoom <= 0) zoom = 1;
     }
     if (rParam) {
+        hasRotation = true;
         setupRotation(rParam, zoom);
     } else if (zoom !== 1) {
         var el = document.getElementById("wrapper");
