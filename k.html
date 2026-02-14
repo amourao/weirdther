@@ -97,23 +97,40 @@ var useCache = (function() {
     }
 })();
 
-function cacheKey(lat, lon, mmdd, delta, units) {
-    return "wh_" + lat + "_" + lon + "_" + mmdd + "_" + delta + "_" + units + "_" + toISODate(new Date());
+function getDefaultUnit() {
+    if (!useCache) {
+        var locale = navigator.language || navigator.userLanguage || "-";
+        var country = locale.split('-')[1] || locale;
+        var imperialCountries = ['US', 'LR', 'MM'];
+        return imperialCountries.indexOf(country.toUpperCase()) !== -1 ? 'imperial' : 'metric';
+    }
+    try {
+        var storedUnit = localStorage.getItem('unit');
+        if (storedUnit) return storedUnit;
+    } catch (e) {}
+    var locale = navigator.language || navigator.userLanguage || "-";
+    var country = locale.split('-')[1] || locale;
+    var imperialCountries = ['US', 'LR', 'MM'];
+    return imperialCountries.indexOf(country.toUpperCase()) !== -1 ? 'imperial' : 'metric';
 }
 
-function clearOldCache() {
+function setDefaultUnit(unit) {
     if (!useCache) return;
     try {
-        var today = toISODate(new Date());
-        var keys = [];
-        for (var i = 0; i < localStorage.length; i++) {
-            keys.push(localStorage.key(i));
-        }
-        for (var j = 0; j < keys.length; j++) {
-            if (keys[j].indexOf("wh_") === 0 && keys[j].indexOf(today) === -1) {
-                localStorage.removeItem(keys[j]);
-            }
-        }
+        localStorage.setItem('unit', unit);
+    } catch (e) {}
+}
+
+function cacheKey(dateStr, lat, lon, units) {
+    return "historical-" + dateStr + "-" + lat + "-" + lon + "-" + units + ".json";
+}
+
+function clearTodayCache(lat, lon, units) {
+    /* Only clear today's cache entry to allow fresh data updates */
+    if (!useCache) return;
+    try {
+        var todayKey = cacheKey(toISODate(new Date()), lat, lon, units);
+        localStorage.removeItem(todayKey);
     } catch (e) {}
 }
 
@@ -246,31 +263,73 @@ function fetchHistoricalYear(lat, lon, date, delta, year, units, callback) {
     var now = new Date();
     if (startDate > now) { callback(null, null); return; }
     if (endDate > now) endDate = new Date(now.getTime() - 86400000);
+
+    /* Check cache for each day in this range */
+    if (useCache) {
+        var allCached = true;
+        var cachedData = {daily: {}};
+        for (var k = 0; k < VAR_LIST.length; k++) cachedData.daily[VAR_LIST[k]] = [];
+        cachedData.daily.time = [];
+
+        for (var d = new Date(startDate.getTime()); d <= endDate; d.setDate(d.getDate() + 1)) {
+            var key = cacheKey(toISODate(d), lat, lon, units);
+            try {
+                var cached = localStorage.getItem(key);
+                if (cached) {
+                    var dayData = JSON.parse(cached);
+                    if (dayData && dayData.daily && dayData.daily.time && dayData.daily.time.length > 0) {
+                        cachedData.daily.time.push(dayData.daily.time[0]);
+                        for (var v = 0; v < VAR_LIST.length; v++) {
+                            cachedData.daily[VAR_LIST[v]].push(dayData.daily[VAR_LIST[v]][0]);
+                        }
+                        continue;
+                    }
+                }
+            } catch (e) {}
+            allCached = false;
+            break;
+        }
+
+        if (allCached && cachedData.daily.time.length > 0) {
+            callback(null, cachedData);
+            return;
+        }
+    }
+
+    /* Fetch from API */
     var url = "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat + "&longitude=" + lon +
         "&start_date=" + toISODate(startDate) + "&end_date=" + toISODate(endDate) + "&daily=" + DAILY_VARS;
     var us = getUnitString(units);
     if (us) url += "&" + us;
-    httpGet(url, callback);
+    httpGet(url, function(err, data) {
+        if (err || !data) {
+            callback(err, null);
+            return;
+        }
+
+        /* Cache individual days */
+        if (useCache && data && data.daily && data.daily.time) {
+            try {
+                for (var i = 0; i < data.daily.time.length; i++) {
+                    var day = data.daily.time[i];
+                    var key = cacheKey(day, lat, lon, units);
+                    var dayData = JSON.parse(JSON.stringify(data));
+                    dayData.daily = {};
+                    for (var varName in data.daily) {
+                        dayData.daily[varName] = [data.daily[varName][i]];
+                    }
+                    localStorage.setItem(key, JSON.stringify(dayData));
+                }
+                /* Clear today's cache to allow fresh updates */
+                clearTodayCache(lat, lon, units);
+            } catch (e) {}
+        }
+
+        callback(null, data);
+    });
 }
 
 function fetchAllHistorical(lat, lon, date, delta, startYear, endYear, units, onProgress, callback) {
-    var mmdd = (date.getMonth() + 1) + "-" + date.getDate();
-    var key = cacheKey(lat, lon, mmdd, delta, units);
-
-    /* Try full-day cache first */
-    if (useCache) {
-        clearOldCache();
-        try {
-            var cached = localStorage.getItem(key);
-            if (cached) {
-                var parsed = JSON.parse(cached);
-                if (parsed && parsed.length > 0) {
-                    callback(null, parsed);
-                    return;
-                }
-            }
-        } catch (e) {}
-    }
 
     /* Fetch all years sequentially */
     var results = [];
@@ -278,11 +337,8 @@ function fetchAllHistorical(lat, lon, date, delta, startYear, endYear, units, on
 
     function next(year) {
         if (year >= endYear) {
-            /* Cache the full result */
-            if (useCache) {
-                try { localStorage.setItem(key, JSON.stringify(results)); } catch (e) {}
-            }
-            callback(null, results);
+            var grouped = groupAllHistorical(results);
+            callback(null, grouped);
             return;
         }
         onProgress(year - startYear, total);
@@ -512,6 +568,7 @@ function buildPageUrl(overrides) {
         k = keys[i];
         if (overrides[k] !== undefined) params[k] = overrides[k];
     }
+
     var qs = "";
     for (i = 0; i < keys.length; i++) {
         k = keys[i];
@@ -709,14 +766,12 @@ function loadWeather(lat, lon, units, dateStr) {
             function(done, total) {
                 show("loading", "Loading historical data... " + Math.round((done / total) * 100) + "%");
             },
-            function(err, historical) {
+            function(err, grouped) {
                 show("loading", "");
-                if (err || historical.length === 0) {
+                if (err || !grouped || !grouped.time || grouped.time.length === 0) {
                     show("error", "Error loading historical data.");
                     return;
                 }
-
-                var grouped = groupAllHistorical(historical);
 
                 var todayIdx = -1;
                 for (var i = 0; i < forecast.daily.time.length; i++) {
@@ -770,7 +825,23 @@ window.onload = function() {
     var lon = params["longitude"] || "";
     var rParam = params["r"] || "";
     var sParam = params["s"] || "";
-    currentUnits = params["units"] || "metric";
+
+    /* Get current units - from URL, localStorage, or locale detection */
+    if (params["units"]) {
+        currentUnits = params["units"];
+        setDefaultUnit(params["units"]);
+    } else {
+        currentUnits = getDefaultUnit();
+        /* If this is the first visit (no stored unit), save the detected default */
+        if (useCache) {
+            try {
+                if (!localStorage.getItem('unit')) {
+                    setDefaultUnit(currentUnits);
+                }
+            } catch (e) {}
+        }
+    }
+
     currentDateStr = params["date"] || toISODate(new Date());
 
     var zoom = 1;
