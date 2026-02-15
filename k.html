@@ -207,7 +207,7 @@ function geocode(location, callback) {
 
 
 function fetchForecast(lat, lon, units, callback) {
-    var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=" + lat + "&longitude=" + lon + "&daily=" + DAILY_VARS;
+    var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&past_days=1&latitude=" + lat + "&longitude=" + lon + "&daily=" + DAILY_VARS;
     var us = getUnitString(units);
     if (us) url += "&" + us;
     httpGet(url, callback);
@@ -597,11 +597,18 @@ function fmtVal(varName, value, units) {
     return (value != null ? value.toFixed(1) : "0") + FRIENDLY[varName][units];
 }
 
-function renderAll(dayScores, units, startYear, endYear, hideVars) {
+function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate) {
     var html = "";
-    var today = dayScores[0];
     var nowStr = toISODate(new Date());
-    var isToday = (toISODate(parseDate(today.date)) === nowStr);
+
+    // Find the selected day in dayScores (may not be index 0 if yesterday is included)
+    var selectedIdx = 0;
+    for (var si = 0; si < dayScores.length; si++) {
+        if (dayScores[si].date === selectedDate) { selectedIdx = si; break; }
+    }
+    var today = dayScores[selectedIdx];
+
+    var isToday = (today.date === nowStr);
     var wx = getWeather(today.rain, today.snow, today.sunshinePct, today.wind, units);
     var label = getScoreLabel(today.weirdther);
     var dateLabel = isToday ? "Today" : formatDateShort(today.date);
@@ -645,7 +652,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars) {
         html += '<div class="score-num">' + today.weirdther + '</div>';
     }
     html += '<div class="score-lbl">' + label + '</div>';
-    html += '<div class="score-freq">' + genOnceEvery(today.maxPercentile, startYear, endYear) + '</div>';
+    // html += '<div class="score-freq">' + genOnceEvery(today.maxPercentile, startYear, endYear) + '</div>';
     html += '<div class="score-refresh">' + formatTime(new Date()) + '</div>';
     html += '</td></tr></table>';
 
@@ -658,9 +665,9 @@ function renderAll(dayScores, units, startYear, endYear, hideVars) {
 
     for (var d = 0; d < dayScores.length; d++) {
         var ds = dayScores[d];
-        var dd = parseDate(ds.date);
-        var rowIsToday = (toISODate(dd) === nowStr);
-        var dayLabel = rowIsToday ? "Today" : formatDateShort(ds.date);
+        var isSelectedRow = (ds.date === selectedDate);
+        var isActualToday = (ds.date === nowStr);
+        var dayLabel = isActualToday ? "Today" : formatDateShort(ds.date);
         var rwx = getWeather(ds.rain, ds.snow, ds.sunshinePct, ds.wind, units);
         var link = buildDateLink(ds.date);
 
@@ -670,9 +677,9 @@ function renderAll(dayScores, units, startYear, endYear, hideVars) {
         var cSun = ds.vars["sunshine_duration"] ? unusualClass(ds.vars["sunshine_duration"].raw) : "";
         var sunPct = Math.round(ds.sunshinePct * 100) + "%";
 
-        html += '<tr>';
+        html += '<tr' + (isSelectedRow ? ' style="border-top:2px solid #000;border-bottom:2px solid #000"' : '') + '>';
         html += '<td class="icon-col">' + rwx.icon + '</td>';
-        html += '<td class="day-col"><a href="' + link + '"' + (rowIsToday ? ' style="font-weight:bold"' : '') + '>' + dayLabel + '</a></td>';
+        html += '<td class="day-col"><a href="' + link + '"' + (isSelectedRow ? ' style="font-weight:bold"' : '') + '>' + dayLabel + '</a></td>';
         html += '<td' + (cTempMax ? ' class="' + cTempMax + '"' : '') + '>' + Math.round(ds.tempMax) + '</td>';
         html += '<td' + (cTempMin ? ' class="' + cTempMin + '"' : '') + '>' + Math.round(ds.tempMin) + '</td>';
         if (!hideRain) {
@@ -759,7 +766,9 @@ function loadWeather(lat, lon, units, dateStr) {
 
         // Fetch historical data for the forecast date range to get actual values
         // Note: Archive API has ~5 day delay, so forecast API data is used for recent dates
-        var forecastStart = forecast.daily.time[todayIdx];
+        // Include yesterday in the range if available (for yesterday row)
+        var rangeStartIdx = todayIdx > 0 ? todayIdx - 1 : todayIdx;
+        var forecastStart = forecast.daily.time[rangeStartIdx];
         var forecastEnd = forecast.daily.time[Math.min(todayIdx + NUM_FORECAST_DAYS - 1, forecast.daily.time.length - 1)];
 
         fetchHistoricalRange(lat, lon, forecastStart, forecastEnd, units, function(err, currentHistorical) {
@@ -822,13 +831,19 @@ function loadWeather(lat, lon, units, dateStr) {
                     console.log("Climate normal range:", climateNormal);
                     console.log("Historical data year range:", grouped.time[0], "to", grouped.time[grouped.time.length - 1]);
                     console.log("Total historical days:", grouped.time.length);
-                    var scores = computeAllDayScores(mergedForecast.daily, todayIdx, NUM_FORECAST_DAYS, grouped, lat, units, delta, climateNormal);
+                    // Include yesterday only when selected day is today or in the future
+                    var isSelectedTodayOrFuture = (dateStr >= toISODate(new Date()));
+                    var startIdx = (isSelectedTodayOrFuture && todayIdx > 0) ? todayIdx - 1 : todayIdx;
+                    var numDays = NUM_FORECAST_DAYS + ((isSelectedTodayOrFuture && todayIdx > 0) ? 1 : 0);
+                    console.log("Score computation: dateStr=" + dateStr + ", todayIdx=" + todayIdx + ", startIdx=" + startIdx + ", numDays=" + numDays + ", isSelectedTodayOrFuture=" + isSelectedTodayOrFuture);
+                    console.log("Merged forecast dates:", mergedForecast.daily.time);
+                    var scores = computeAllDayScores(mergedForecast.daily, startIdx, numDays, grouped, lat, units, delta, climateNormal);
                     if (scores.length === 0) {
                         show("error", "No data to display.");
                         return;
                     }
 
-                    renderAll(scores, units, startYear, endYear, hideVars);
+                    renderAll(scores, units, startYear, endYear, hideVars, dateStr);
                 }
             );
         });
