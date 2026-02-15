@@ -610,19 +610,27 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
         series_min_max = displaySeriesMinMax[0].toFixed(decimalPlaces) + "/" + series_mean.toFixed(decimalPlaces) + "/" + displaySeriesMinMax[1].toFixed(decimalPlaces);
     }
 
-    // Normalize historical data for gradient if sunshine_duration
-    var gradientHistData = data;
-    if (var_name === "sunshine_duration") {
-        gradientHistData = [];
-        for (var i = 0; i < data.length; i++) {
-            if (data[i] != null && data_days[i]) {
-                var dlHours = getDaylightHours(data_days[i], latitude);
-                gradientHistData.push((dlHours > 0) ? data[i] / (dlHours * 36) : 0);
-            }
+    // Build paired historical data+days, normalizing sunshine_duration and filtering nulls
+    var gradientHistData = [];
+    var gradientHistDays = [];
+    for (var i = 0; i < data.length; i++) {
+        if (data[i] == null || !data_days[i]) continue;
+        if (var_name === "sunshine_duration") {
+            var dlHours = getDaylightHours(data_days[i], latitude);
+            gradientHistData.push((dlHours > 0) ? data[i] / (dlHours * 36) : 0);
+        } else {
+            gradientHistData.push(data[i]);
         }
+        gradientHistDays.push(data_days[i]);
     }
 
-    var gradient = generateSpan(displaySeriesValues, current_series_days, gradientHistData, data_days, var_name, unit_type);
+    // Sort historical data by value (required for percentile bar positioning)
+    var gradientCombined = gradientHistDays.map(function(d, i) { return [d, gradientHistData[i]]; });
+    gradientCombined.sort(function(a, b) { return a[1] - b[1]; });
+    gradientHistDays = gradientCombined.map(function(e) { return e[0]; });
+    gradientHistData = gradientCombined.map(function(e) { return e[1]; });
+
+    var gradient = generateSpan(displaySeriesValues, current_series_days, gradientHistData, gradientHistDays, var_name, unit_type);
 
     var qualifier = "";
     var boldStart = "";
