@@ -1093,13 +1093,13 @@ function createAsciiChart(name, groupedData, currentVal, currentDate, latitude, 
     for (let varName in sortedHistoricalDataKeys) {
         varValues = sortedHistoricalDataKeys[varName];
         varValueString = varValues + "";
-        line += SEPARATOR.repeat(COLUMN_WIDTH-varValueString.length) + varValueString;
+        line += SEPARATOR.repeat(Math.max(0, COLUMN_WIDTH-varValueString.length)) + varValueString;
     }
     line += "<br>" + SEPARATOR;
     for (let varName in sortedHistoricalDataKeys) {
         varValues = maxValues[sortedHistoricalDataKeys[varName]];
         varValueString = varValues + "";
-        line += SEPARATOR.repeat(COLUMN_WIDTH-varValueString.length) + varValueString;
+        line += SEPARATOR.repeat(Math.max(0, COLUMN_WIDTH-varValueString.length)) + varValueString;
     }
     line += "<br>";
     const stats = printStats(historical_grouped, currentVal, name, currentDate, latitude);
