@@ -481,7 +481,7 @@ function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGroup
         if (dlHours > 0) ds.sunshinePct = ds.sunshineSec / (dlHours * 3600);
         if (ds.sunshinePct > 1) ds.sunshinePct = 1;
 
-        var maxScore = 0;
+        var varScores = [];
         var maxPctile = 0.5;
 
         for (var v = 0; v < VAR_LIST.length; v++) {
@@ -498,21 +498,12 @@ function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGroup
                 climateNormal
             );
 
-            if (d === 0) {
-                console.log("[" + varName + "] First day: " + ds.date + ", value: " + curVal + ", comparing against " + filtered.values.length + " historical values");
-            }
-
             var result = computeVariableScore(varName, filtered.values, filtered.dates, curVal, ds.date, latitude);
-
-            if (d === 0) {
-                console.log("[" + varName + "] Result - percentile: " + (result.percentile * 100).toFixed(1) + "%, score: " + result.score.toFixed(2));
-            }
 
             if (filtered.values.length === 0) continue;
 
             var pctile = result.percentile;
             var score = result.score;
-            var cmpVal = result.normalizedValue;
 
             var qualifier = "";
             if (pctile < 0) qualifier = FRIENDLY[varName].lower + "!";
@@ -536,15 +527,14 @@ function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGroup
                 value: dispValue
             };
 
-            if (isScoreVar(varName) && score > maxScore) {
-                maxScore = score;
-                maxPctile = Math.abs(pctile - 0.5) + 0.5;
+            if (isScoreVar(varName)) {
+                varScores.push({ varName: varName, score: score });
+                var absPctile = Math.abs(pctile - 0.5) + 0.5;
+                if (absPctile > maxPctile) maxPctile = absPctile;
             }
         }
 
-        ds.weirdther = Math.round(maxScore * 100);
-        if (ds.weirdther > 100) ds.weirdther = 100;
-        if (ds.weirdther === 100) ds.weirdther = 99;
+        ds.weirdther = computeFinalWeirdtherScore(varScores);
         ds.maxPercentile = maxPctile;
         allScores.push(ds);
     }
@@ -753,23 +743,16 @@ function loadWeather(lat, lon, units, dateStr) {
             return;
         }
 
-        var todayIdx = -1;
-        for (var i = 0; i < forecast.daily.time.length; i++) {
-            if (forecast.daily.time[i] === dateStr) { todayIdx = i; break; }
-        }
-        if (todayIdx === -1) {
-            show("error", "Date " + dateStr + " not found in forecast.");
-            return;
-        }
-
         showProgress("Loading current weather...", 10);
 
-        // Fetch historical data for the forecast date range to get actual values
-        // Note: Archive API has ~5 day delay, so forecast API data is used for recent dates
-        // Include yesterday in the range if available (for yesterday row)
-        var rangeStartIdx = todayIdx > 0 ? todayIdx - 1 : todayIdx;
-        var forecastStart = forecast.daily.time[rangeStartIdx];
-        var forecastEnd = forecast.daily.time[Math.min(todayIdx + NUM_FORECAST_DAYS - 1, forecast.daily.time.length - 1)];
+        // Compute the date range to fetch historical data for (covers selected date + forecast days)
+        var dayBefore = toISODate(new Date(date.getTime() - 86400000));
+        var rangeEndDate = toISODate(new Date(date.getTime() + (NUM_FORECAST_DAYS - 1) * 86400000));
+        var forecastStart = dayBefore;
+        var forecastEnd = rangeEndDate;
+        // Extend range to cover forecast bounds if the selected date is within them
+        if (forecast.daily.time[0] < forecastStart) forecastStart = forecast.daily.time[0];
+        if (forecast.daily.time[forecast.daily.time.length - 1] > forecastEnd) forecastEnd = forecast.daily.time[forecast.daily.time.length - 1];
 
         fetchHistoricalRange(lat, lon, forecastStart, forecastEnd, units, function(err, currentHistorical) {
             showProgress("Loading historical data for comparison...", 30);
@@ -796,13 +779,13 @@ function loadWeather(lat, lon, units, dateStr) {
                     // Merge forecast with historical data for current dates
                     var mergedForecast = mergeForecastHistorical(forecast, currentHistorical);
 
-                    // Re-find today's index in merged data
-                    todayIdx = -1;
+                    // Find selected date in merged data
+                    var todayIdx = -1;
                     for (var i = 0; i < mergedForecast.daily.time.length; i++) {
                         if (mergedForecast.daily.time[i] === dateStr) { todayIdx = i; break; }
                     }
                     if (todayIdx === -1) {
-                        show("error", "Date " + dateStr + " not found in merged data.");
+                        show("error", "No data available for " + dateStr);
                         return;
                     }
 

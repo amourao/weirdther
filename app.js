@@ -384,12 +384,12 @@ async function getWeather(){
             days += "-" + current[info[1]]["daily"]["time"][current[info[1]]["daily"]["time"].length-1].replaceAll("-", "/");
         }
         document.getElementById('summary').innerHTML += "<b>" + info[0] + ":</b> " + days + "<br>";
-        let score = [];
-        let scoreSum = [];
+        var numDays = current[info[1]]["daily"]["time"].length;
+        // Collect per-day per-variable scores for weighted RMS
+        var dayVarScores = [];
         let percentiles = [];
-        for (var i = 0; i < current[info[1]]["daily"]["time"].length; i++) {
-            score.push(0);
-            scoreSum.push(1);
+        for (var i = 0; i < numDays; i++) {
+            dayVarScores.push([]);
             percentiles.push(0);
         }
         var text = ""
@@ -407,23 +407,18 @@ async function getWeather(){
             response["results"][info[0]]["percentiles"][varName] = [];
             for (var i = 0; i < datas[1].length; i++) {
                 response["results"][info[0]]["percentiles"][varName].push((datas[5][i]).toFixed(2));
-                if (datas[1][i] > score[i] && varName != "sunshine_duration" && varName != "wind_speed_10m_max") {
-                    score[i] = datas[1][i];
-                    scoreSum[i] = datas[2][i];
+                if (isScoreVar(varName)) {
+                    dayVarScores[i].push({ varName: varName, score: datas[1][i] });
+                }
+                if (datas[4][i] > percentiles[i]) {
                     percentiles[i] = datas[4][i];
                 }
             }
             text += datas[3] + "\n";
         }
-        for (var i = 0; i < score.length; i++) {
-            score[i] = score[i] / scoreSum[i] * 100;
-            if (score[i] == 100) {
-                score[i] = 99.9;
-            }
-            if (score[i] > 100) {
-                score[i] = 100;
-            }
-
+        let score = [];
+        for (var i = 0; i < numDays; i++) {
+            score.push(computeFinalWeirdtherScore(dayVarScores[i]));
         }
 
         response["results"][info[0]]["weirdther_score"] = score;

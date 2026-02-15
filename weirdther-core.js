@@ -7,7 +7,19 @@ var WEIRDTHER_CONFIG = {
     DAILY_VARS: "temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max,sunshine_duration",
     DEFAULT_DELTA: 5,
     HISTORICAL_YEARS: 26,
-    SCORE_VARS: ["temperature_2m_max", "temperature_2m_min", "rain_sum", "snowfall_sum"],
+    SCORE_VARS: ["temperature_2m_max", "temperature_2m_min", "rain_sum", "snowfall_sum", "wind_speed_10m_max", "sunshine_duration"],
+    SCORE_WEIGHTS: {
+        "temperature_2m_max": 1.0,
+        "temperature_2m_min": 1.0,
+        "rain_sum": 1.0,
+        "snowfall_sum": 1.0,
+        "wind_speed_10m_max": 0.6,
+        "sunshine_duration": 0.3
+    },
+    SCORE_EXPONENT: 3,
+    SCORE_EXTREME_THRESHOLD: 0.9, // Boost kicks in at 95th/5th percentile (normalized)
+    SCORE_EXTREME_BOOST: 4,       // Multiplier for excess beyond threshold
+    SCORE_DENOM: 2.0,             // Fixed denominator for RMS (rewards breadth)
     METRIC_UNIT_STRING: "",
     IMPERIAL_UNIT_STRING: "temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch"
 };
@@ -244,9 +256,33 @@ function findPercentileForValue(sortedData, value) {
 
 function computeWeirdtherScore(percentile) {
     var diff = Math.abs(percentile - 0.5);
-    var score = diff;
-    if (diff > 0.3) score = diff * 2;
-    return score * score;
+    var normalized = diff * 2; // 0 at 50th, 1 at 100th, >1 beyond historical range
+    var score = Math.pow(normalized, WEIRDTHER_CONFIG.SCORE_EXPONENT);
+    // Steep boost for extreme percentiles (above 95th / below 5th)
+    if (normalized > WEIRDTHER_CONFIG.SCORE_EXTREME_THRESHOLD) {
+        score += (normalized - WEIRDTHER_CONFIG.SCORE_EXTREME_THRESHOLD) * WEIRDTHER_CONFIG.SCORE_EXTREME_BOOST;
+    }
+    return score;
+}
+
+/**
+ * Computes the final weirdther score from multiple variable scores using weighted RMS
+ * @param {Array} varScores - Array of {varName, score} objects
+ * @returns {number} Final score 0-100 (capped at 99)
+ */
+function computeFinalWeirdtherScore(varScores) {
+    var sumWS = 0;
+    for (var i = 0; i < varScores.length; i++) {
+        var w = WEIRDTHER_CONFIG.SCORE_WEIGHTS[varScores[i].varName] || 1.0;
+        var s = varScores[i].score;
+        if (s > 0) sumWS += s * s * w;
+    }
+    if (sumWS === 0) return 0;
+    // Fixed denominator: more extreme variables always increase the score
+    var rms = Math.sqrt(sumWS / WEIRDTHER_CONFIG.SCORE_DENOM);
+    var finalScore = Math.round(rms * 100);
+    if (finalScore > 99) finalScore = 99;
+    return finalScore;
 }
 
 function isScoreVar(varName) {
