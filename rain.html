@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Weirdther Radar</title>
+<script src="weirdther-core.js"></script>
+<style>
+body { margin: 0; padding: 0; background: white; color: black; }
+#wrapper { padding: 10px 14px; font-family: Helvetica, Arial, sans-serif; -webkit-box-sizing: border-box; box-sizing: border-box; overflow: hidden; }
+#header { font-size: 36px; padding-bottom: 4px; border-bottom: 3px solid black; margin-bottom: 6px; }
+.hdr-row { border: none; width: 100%; }
+.hdr-row td { border: none; padding: 0; font-size: 36px; }
+.hdr-right { text-align: right; white-space: nowrap; width: 1px; }
+#error { font-size: 36px; font-weight: bold; }
+#radar-container { position: relative; width: 100%; text-align: center; }
+#radar-canvas { width: 100%; border: 2px solid black; background: white; image-rendering: -webkit-optimize-contrast; image-rendering: pixelated; }
+#radar-time { font-size: 28px; font-weight: bold; padding: 4px 0; text-align: center; }
+#legend { font-size: 22px; text-align: center; padding: 4px 0; }
+.loc-form { margin: 0; padding: 0; width: 100%; white-space: nowrap; }
+.loc-input { width: calc(100% - 80px); font-size: 30px; border: 1px solid gray; padding: 2px 6px; -webkit-box-sizing: border-box; box-sizing: border-box; vertical-align: top; }
+.go-btn { width: 70px; font-size: 30px; border: 1px solid gray; padding: 2px 8px; vertical-align: top; margin-left: -4px; }
+#anim-controls { padding: 4px 0; }
+#anim-controls table { width: 100%; border: none; border-collapse: collapse; }
+#anim-controls td { border: none; vertical-align: middle; }
+.anim-btn { font-size: 22px; width: 56px; height: 34px; border: 2px solid black; background: white; cursor: pointer; padding: 0; }
+.anim-bar { width: 100%; height: 10px; background: #ddd; border: 1px solid #999; }
+.anim-fill { height: 100%; background: black; width: 0%; }
+.anim-range-edge { font-size: 22px; width: 1px; white-space: nowrap; }
+.anim-time { font-size: 26px; font-weight: bold; text-align: center; }
+body.landscape { overflow: hidden; }
+body.landscape #wrapper { padding: 2px 6px; }
+body.landscape #header { font-size: 18px; padding-bottom: 1px; border-bottom-width: 1px; margin-bottom: 2px; }
+body.landscape .hdr-row td { font-size: 18px; }
+body.landscape .loc-input { font-size: 16px; padding: 1px 4px; }
+body.landscape .go-btn { font-size: 16px; width: 40px; padding: 1px 4px; }
+body.landscape #loading { font-size: 18px; padding: 2px 0; }
+body.landscape #error { font-size: 18px; }
+body.landscape #legend { display: none; }
+body.landscape #radar-time { font-size: 16px; padding: 1px 0; }
+body.landscape .anim-range-edge { font-size: 12px; }
+body.landscape .anim-time { font-size: 16px; }
+body.landscape .anim-btn { font-size: 14px; width: 26px; height: 22px; border-width: 1px; }
+body.landscape #anim-controls { padding: 1px 0; }
+body.landscape .anim-bar { height: 6px; }
+</style>
+</head>
+<body>
+<div id="wrapper">
+<div id="header"></div>
+<div id="error"></div>
+<div id="radar-container">
+<canvas id="radar-canvas"></canvas>
+<div id="anim-controls" style="display:none"><table><tr>
+<td style="width:100px;padding:4px 6px 4px 0"><button id="anim-btn" class="anim-btn" style="width: 90%; height: 100%;" onclick="toggleAnimation()">&#9646;&#9646;</button></td>
+<td style="padding:4px 0"><div class="anim-bar"><div id="anim-fill" class="anim-fill"></div></div><table style="width:100%;border:none;border-collapse:collapse"><tr><td id="anim-start" style="border:none;padding:2px 0" class="anim-range-edge"></td><td id="anim-time" style="border:none;padding:2px 0" class="anim-time"></td><td id="anim-end" style="border:none;padding:2px 0" class="anim-range-edge"></td></tr></table></td>
+</tr></table></div>
+<div id="radar-time"></div>
+</div>
+
+<script>
+/* ========== CONFIGURATION ========== */
+var RAINVIEWER_API = "https://api.rainviewer.com/public/weather-maps.json";
+var TILE_SIZE = 256;
+var DEFAULT_ZOOM = 6;
+var MAX_ZOOM = 10;
+var RADAR_MAX_ZOOM = 7;
+var RADAR_COLOR_SCHEME = 2; /* Universal Blue */
+var RADAR_OPTIONS = "1_1"; /* smooth_snow */
+var TRAIL_FRAMES = 6;
+var ANIM_SPEED = 500;
+var htmlZoomFactor = 1;
+var grayMode = true; /* convert radar to grayscale; toggled via ?g=0 */
+
+var animTimer = null;
+var animFrames = [];
+var animBaseImages = null;
+var animGrid = null;
+var animOffX = 0;
+var animOffY = 0;
+var animCanvas = null;
+var animCtx = null;
+var animIdx = 0;
+var animPlaying = false;
+
+var currentLat = null;
+var currentLon = null;
+var locationName = "";
+
+var DBZ_COLOR_TABLE = [
+    // rain entries: [r, g, b, a, dbz]
+    [0,0,0,0,-11,"rain"],
+    [99,97,89,20,-10,"rain"],
+    [102,99,90,25,-9,"rain"],
+    [105,102,92,30,-8,"rain"],
+    [108,104,93,36,-7,"rain"],
+    [111,107,95,41,-6,"rain"],
+    [114,110,97,46,-5,"rain"],
+    [117,112,98,52,-4,"rain"],
+    [120,115,100,57,-3,"rain"],
+    [124,117,101,62,-2,"rain"],
+    [127,120,103,68,-1,"rain"],
+    [130,123,105,73,0,"rain"],
+    [133,125,106,78,1,"rain"],
+    [136,128,108,84,2,"rain"],
+    [139,130,109,89,3,"rain"],
+    [142,133,111,94,4,"rain"],
+    [146,136,113,100,5,"rain"],
+    [158,147,117,110,6,"rain"],
+    [170,158,121,120,7,"rain"],
+    [182,169,126,130,8,"rain"],
+    [194,180,130,140,9,"rain"],
+    [206,192,135,150,10,"rain"],
+    [210,196,139,160,11,"rain"],
+    [214,200,143,170,12,"rain"],
+    [218,204,147,180,13,"rain"],
+    [222,208,151,190,14,"rain"],
+    [136,221,238,255,15,"rain"],
+    [108,209,235,255,16,"rain"],
+    [81,197,232,255,17,"rain"],
+    [54,186,229,255,18,"rain"],
+    [27,174,226,255,19,"rain"],
+    [0,163,224,255,20,"rain"],
+    [0,154,213,255,21,"rain"],
+    [0,145,202,255,22,"rain"],
+    [0,136,191,255,23,"rain"],
+    [0,127,180,255,24,"rain"],
+    [0,119,170,255,25,"rain"],
+    [0,112,163,255,26,"rain"],
+    [0,105,156,255,27,"rain"],
+    [0,98,149,255,28,"rain"],
+    [0,91,142,255,29,"rain"],
+    [0,85,136,255,30,"rain"],
+    [0,81,128,255,31,"rain"],
+    [0,78,120,255,32,"rain"],
+    [0,74,112,255,33,"rain"],
+    [0,71,104,255,34,"rain"],
+    [255,238,0,255,35,"rain"],
+    [255,224,0,255,36,"rain"],
+    [255,210,0,255,37,"rain"],
+    [255,197,0,255,38,"rain"],
+    [255,183,0,255,39,"rain"],
+    [255,170,0,255,40,"rain"],
+    [255,159,0,255,41,"rain"],
+    [255,149,0,255,42,"rain"],
+    [255,139,0,255,43,"rain"],
+    [255,129,0,255,44,"rain"],
+    [255,68,0,255,45,"rain"],
+    [242,54,0,255,46,"rain"],
+    [230,40,0,255,47,"rain"],
+    [217,27,0,255,48,"rain"],
+    [205,13,0,255,49,"rain"],
+    [193,0,0,255,50,"rain"],
+    [168,0,0,255,51,"rain"],
+    [143,0,0,255,52,"rain"],
+    [118,0,0,255,53,"rain"],
+    [93,0,0,255,54,"rain"],
+    [255,170,255,255,55,"rain"],
+    [255,159,255,255,56,"rain"],
+    [255,149,255,255,57,"rain"],
+    [255,139,255,255,58,"rain"],
+    [255,129,255,255,59,"rain"],
+    [255,119,255,255,60,"rain"],
+    [255,108,255,255,61,"rain"],
+    [255,98,255,255,62,"rain"],
+    [255,88,255,255,63,"rain"],
+    [255,78,255,255,64,"rain"],
+    [255,255,255,255,65,"rain"],
+    [255,255,255,255,66,"rain"],
+    [255,255,255,255,67,"rain"],
+    [255,255,255,255,68,"rain"],
+    [255,255,255,255,69,"rain"],
+    [255,255,255,255,70,"rain"],
+    [255,255,255,255,71,"rain"],
+    [255,255,255,255,72,"rain"],
+    [255,255,255,255,73,"rain"],
+    [255,255,255,255,74,"rain"],
+    [0,255,0,255,75,"rain"],
+    // snow entries
+    [207,255,255,0,-10,"snow"],
+    [206,255,255,12,-9,"snow"],
+    [205,255,255,25,-8,"snow"],
+    [204,255,255,38,-7,"snow"],
+    [203,255,255,51,-6,"snow"],
+    [203,255,255,63,-5,"snow"],
+    [202,255,255,76,-4,"snow"],
+    [201,255,255,89,-3,"snow"],
+    [200,255,255,102,-2,"snow"],
+    [199,255,255,114,-1,"snow"],
+    [199,255,255,127,0,"snow"],
+    [198,255,255,140,1,"snow"],
+    [197,255,255,153,2,"snow"],
+    [196,255,255,165,3,"snow"],
+    [195,255,255,178,4,"snow"],
+    [190,0,0,0,5,"snow"],
+    [190,0,0,0,6,"snow"],
+    [190,0,0,0,7,"snow"],
+    [190,0,0,0,8,"snow"],
+    [190,0,0,0,9,"snow"],
+    [100,0,0,0,10,"snow"],
+    [100,0,0,0,11,"snow"],
+    [100,0,0,0,12,"snow"],
+    [100,0,0,0,13,"snow"],
+    [100,0,0,0,14,"snow"],
+    [100,0,0,0,15,"snow"],
+    [100,0,0,0,16,"snow"],
+    [146,210,255,255,17,"snow"],
+    [139,203,255,255,18,"snow"],
+    [133,197,255,255,19,"snow"],
+    [127,191,255,255,20,"snow"],
+    [120,184,255,255,21,"snow"],
+    [114,178,255,255,22,"snow"],
+    [107,171,255,255,23,"snow"],
+    [101,165,255,255,24,"snow"],
+    [95,159,255,255,25,"snow"],
+    [91,155,255,255,26,"snow"],
+    [88,152,255,255,27,"snow"],
+    [85,149,255,255,28,"snow"],
+    [82,146,255,255,29,"snow"],
+    [79,143,255,255,30,"snow"],
+    [75,139,255,255,31,"snow"],
+    [72,136,255,255,32,"snow"],
+    [69,133,255,255,33,"snow"],
+    [66,130,255,255,34,"snow"],
+    [63,127,255,255,35,"snow"],
+    [59,123,255,255,36,"snow"],
+    [56,120,255,255,37,"snow"],
+    [53,117,255,255,38,"snow"],
+    [50,114,255,255,39,"snow"],
+    [47,111,255,255,40,"snow"],
+    [43,107,255,255,41,"snow"],
+    [40,104,255,255,42,"snow"],
+    [37,101,255,255,43,"snow"],
+    [34,98,255,255,44,"snow"],
+    [31,95,255,255,45,"snow"],
+    [27,91,255,255,46,"snow"],
+    [24,88,255,255,47,"snow"],
+    [21,85,255,255,48,"snow"],
+    [18,82,255,255,49,"snow"],
+    [15,79,255,255,50,"snow"],
+    [12,75,255,255,51,"snow"],
+    [9,72,255,255,52,"snow"],
+    [6,69,255,255,53,"snow"],
+    [2,66,255,255,54,"snow"],
+    [0,63,255,255,55,"snow"],
+    [0,59,255,255,56,"snow"],
+    [0,56,255,255,57,"snow"],
+    [0,53,255,255,58,"snow"],
+    [0,50,255,255,59,"snow"],
+    [0,47,255,255,60,"snow"],
+    [0,43,255,255,61,"snow"],
+    [0,40,255,255,62,"snow"],
+    [0,37,255,255,63,"snow"],
+    [0,34,255,255,64,"snow"],
+    [0,31,255,255,65,"snow"],
+    [0,27,255,255,66,"snow"],
+    [0,24,255,255,67,"snow"],
+    [0,21,255,255,68,"snow"],
+    [0,18,255,255,69,"snow"],
+    [0,15,255,255,70,"snow"],
+    [0,12,255,255,71,"snow"],
+    [0,9,255,255,72,"snow"],
+    [0,6,255,255,73,"snow"],
+    [0,2,255,255,74,"snow"],
+    [0,0,255,255,75,"snow"]
+];
+
+var rainColors = {'0,0,0,0': -11, '99,97,89,20': -10, '102,99,90,25': -9, '105,102,92,30': -8, '108,104,93,36': -7, '111,107,95,41': -6, '114,110,97,46': -5, '117,112,98,52': -4, '120,115,100,57': -3, '124,117,101,62': -2, '127,120,103,68': -1, '130,123,105,73': 0, '133,125,106,78': 1, '136,128,108,84': 2, '139,130,109,89': 3, '142,133,111,94': 4, '146,136,113,100': 5, '158,147,117,110': 6, '170,158,121,120': 7, '182,169,126,130': 8, '194,180,130,140': 9, '206,192,135,150': 10, '210,196,139,160': 11, '214,200,143,170': 12, '218,204,147,180': 13, '222,208,151,190': 14, '136,221,238,255': 15, '108,209,235,255': 16, '81,197,232,255': 17, '54,186,229,255': 18, '27,174,226,255': 19, '0,163,224,255': 20, '0,154,213,255': 21, '0,145,202,255': 22, '0,136,191,255': 23, '0,127,180,255': 24, '0,119,170,255': 25, '0,112,163,255': 26, '0,105,156,255': 27, '0,98,149,255': 28, '0,91,142,255': 29, '0,85,136,255': 30, '0,81,128,255': 31, '0,78,120,255': 32, '0,74,112,255': 33, '0,71,104,255': 34, '255,238,0,255': 35, '255,224,0,255': 36, '255,210,0,255': 37, '255,197,0,255': 38, '255,183,0,255': 39, '255,170,0,255': 40, '255,159,0,255': 41, '255,149,0,255': 42, '255,139,0,255': 43, '255,129,0,255': 44, '255,68,0,255': 45, '242,54,0,255': 46, '230,40,0,255': 47, '217,27,0,255': 48, '205,13,0,255': 49, '193,0,0,255': 50, '168,0,0,255': 51, '143,0,0,255': 52, '118,0,0,255': 53, '93,0,0,255': 54, '255,170,255,255': 55, '255,159,255,255': 56, '255,149,255,255': 57, '255,139,255,255': 58, '255,129,255,255': 59, '255,119,255,255': 60, '255,108,255,255': 61, '255,98,255,255': 62, '255,88,255,255': 63, '255,78,255,255': 64, '255,255,255,255': 74, '0,255,0,255': 95};
+var snowColors = {'0,0,0,0': -11, '207,255,255,0': -10, '206,255,255,12': -9, '205,255,255,25': -8, '204,255,255,38': -7, '203,255,255,51': -6, '203,255,255,63': -5, '202,255,255,76': -4, '201,255,255,89': -3, '200,255,255,102': -2, '199,255,255,114': -1, '199,255,255,127': 0, '198,255,255,140': 1, '197,255,255,153': 2, '196,255,255,165': 3, '195,255,255,178': 4, '195,255,255,191': 5, '194,255,255,204': 6, '193,255,255,216': 7, '192,255,255,229': 8, '191,255,255,242': 9, '191,255,255,255': 10, '184,248,255,255': 11, '178,242,255,255': 12, '171,235,255,255': 13, '165,229,255,255': 14, '159,223,255,255': 15, '152,216,255,255': 16, '146,210,255,255': 17, '139,203,255,255': 18, '133,197,255,255': 19, '127,191,255,255': 20, '120,184,255,255': 21, '114,178,255,255': 22, '107,171,255,255': 23, '101,165,255,255': 24, '95,159,255,255': 25, '91,155,255,255': 26, '88,152,255,255': 27, '85,149,255,255': 28, '82,146,255,255': 29, '79,143,255,255': 30, '75,139,255,255': 31, '72,136,255,255': 32, '69,133,255,255': 33, '66,130,255,255': 34, '63,127,255,255': 35, '59,123,255,255': 36, '56,120,255,255': 37, '53,117,255,255': 38, '50,114,255,255': 39, '47,111,255,255': 40, '43,107,255,255': 41, '40,104,255,255': 42, '37,101,255,255': 43, '34,98,255,255': 44, '31,95,255,255': 45, '27,91,255,255': 46, '24,88,255,255': 47, '21,85,255,255': 48, '18,82,255,255': 49, '15,79,255,255': 50, '12,75,255,255': 51, '9,72,255,255': 52, '6,69,255,255': 53, '2,66,255,255': 54, '0,63,255,255': 55, '0,59,255,255': 56, '0,56,255,255': 57, '0,53,255,255': 58, '0,50,255,255': 59, '0,47,255,255': 60, '0,43,255,255': 61, '0,40,255,255': 62, '0,37,255,255': 63, '0,34,255,255': 64, '0,31,255,255': 65, '0,27,255,255': 66, '0,24,255,255': 67, '0,21,255,255': 68, '0,18,255,255': 69, '0,15,255,255': 70, '0,12,255,255': 71, '0,9,255,255': 72, '0,6,255,255': 73, '0,2,255,255': 74, '0,0,255,255': 95};
+
+var missedColors = {};
+/* ========== UTILITY ========== */
+
+function show(id, text) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = text;
+    el.style.display = text ? "" : "none";
+}
+
+function httpGet(url, callback) {
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", url, true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                try { callback(null, JSON.parse(xhr.responseText)); }
+                catch (e) { callback("JSON parse error", null); }
+            } else {
+                callback("HTTP error " + xhr.status, null);
+            }
+        }
+    };
+    xhr.send(null);
+}
+
+function geocode(location, callback) {
+    var url = "https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(location) + "&count=10&format=json";
+    httpGet(url, function(err, data) {
+        if (err || !data || !data.results || data.results.length === 0) {
+            callback("Location not found");
+            return;
+        }
+        var r = data.results[0];
+        var name = r.name;
+        if (r.admin1) name += ", " + r.admin1;
+        if (r.country) name += ", " + r.country;
+        callback(null, parseFloat(r.latitude).toFixed(2), parseFloat(r.longitude).toFixed(2), name);
+    });
+}
+
+/* ========== TILE MATH ========== */
+
+function latLonToTilePixel(lat, lon, zoom) {
+    var n = Math.pow(2, zoom);
+    var xExact = (lon + 180) / 360 * n;
+    var latRad = lat * Math.PI / 180;
+    var yExact = (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n;
+    var tileX = Math.floor(xExact);
+    var tileY = Math.floor(yExact);
+    var pixelX = Math.round((xExact - tileX) * TILE_SIZE);
+    var pixelY = Math.round((yExact - tileY) * TILE_SIZE);
+    return { tileX: tileX, tileY: tileY, pixelX: pixelX, pixelY: pixelY };
+}
+
+function calculateGrid(canvasWidth, canvasHeight) {
+    var tilesX = Math.ceil(canvasWidth / TILE_SIZE) + 1;
+    var tilesY = Math.ceil(canvasHeight / TILE_SIZE) + 1;
+    return { tilesX: tilesX, tilesY: tilesY, startX: 0, startY: 0, zoom: DEFAULT_ZOOM };
+}
+
+/* ========== TILE URLS ========== */
+
+function baseTileUrl(z, x, y) {
+    var subdomains = ["a", "b", "c", "d"];
+    var s = subdomains[Math.abs(x + y) % 4];
+    return "https://cartodb-basemaps-" + s + ".global.ssl.fastly.net/light_nolabels/" + z + "/" + x + "/" + y + ".png";
+}
+
+function radarTileUrl(host, framePath, z, x, y) {
+    return host + framePath + "/" + TILE_SIZE + "/" + z + "/" + x + "/" + y + "/" + RADAR_COLOR_SCHEME + "/" + RADAR_OPTIONS + ".png";
+}
+
+/* ========== TILE LOADING ========== */
+
+var TILE_RETRY_MAX = 2;
+var TILE_RETRY_DELAY = 800;
+
+function loadTileGrid(urlFn, grid, callback) {
+    var totalTiles = grid.tilesX * grid.tilesY;
+    var done = 0;
+    var images = [];
+    var n = Math.pow(2, grid.zoom);
+
+    function loadOneTile(r, c, url, retries) {
+        var img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = function() {
+            images[r][c] = img;
+            done++;
+            if (done === totalTiles) callback(null, images);
+        };
+        img.onerror = function() {
+            if (retries > 0) {
+                setTimeout(function() { loadOneTile(r, c, url, retries - 1); }, TILE_RETRY_DELAY);
+            } else {
+                images[r][c] = null;
+                done++;
+                if (done === totalTiles) callback(null, images);
+            }
+        };
+        img.src = url;
+    }
+
+    for (var row = 0; row < grid.tilesY; row++) {
+        images[row] = [];
+        for (var col = 0; col < grid.tilesX; col++) {
+            var tx = grid.startX + col;
+            var ty = grid.startY + row;
+            tx = ((tx % n) + n) % n;
+            if (ty < 0 || ty >= n) {
+                images[row][col] = null;
+                done++;
+                if (done === totalTiles) callback(null, images);
+            } else {
+                loadOneTile(row, col, urlFn(grid.zoom, tx, ty), TILE_RETRY_MAX);
+            }
+        }
+    }
+}
+
+function drawTileGrid(ctx, images, grid, offsetX, offsetY) {
+    var s = htmlZoomFactor;
+    for (var row = 0; row < grid.tilesY; row++) {
+        for (var col = 0; col < grid.tilesX; col++) {
+            if (images[row] && images[row][col]) {
+                var dx = col * TILE_SIZE * s - offsetX;
+                var dy = row * TILE_SIZE * s - offsetY;
+                ctx.drawImage(images[row][col], dx, dy, TILE_SIZE * s, TILE_SIZE * s);
+            }
+        }
+    }
+}
+
+
+function convertColorToDbz(r, g, b, a) {
+    var key = r + "," + g + "," + b + "," + a;
+    if (rainColors.hasOwnProperty(key)) {
+        return [rainColors[key], "rain"];
+    } else if (snowColors.hasOwnProperty(key)) {
+        return [snowColors[key], "snow"];
+    } else {
+        r *= a / 255;
+        g *= a / 255;
+        b *= a / 255;
+        // find nearest color in rainColors and snowColors (for handling anti-aliasing), and store it in the dict for future reference
+        var bestDist = Infinity;
+        var bestDbz = 0;
+        var bestType = "clear";
+
+        for (var i = 0; i < DBZ_COLOR_TABLE.length; i++) {
+            var entry = DBZ_COLOR_TABLE[i];
+            var na = entry[3] / 255;
+            var dr = Math.abs(r - entry[0]*na);
+            var dg = Math.abs(g - entry[1]*na);
+            var db = Math.abs(b - entry[2]*na);
+            var dist = dr + dg + db;
+
+            if (dist < bestDist && ((a > 1 && bestType == "snow") || entry[5] !== "snow")) { // prefer rain match over snow for semi-transparent pixels, to avoid false snow detection
+                bestDist = dist;
+                bestDbz = entry[4];
+                bestType = entry[5];
+                if (dist === 0) break; // exact match
+            }
+        }
+        console.log("Missed color: " + key + ", mapped to dbz " + bestDbz + " (" + bestType + ")" + ", distance: " + bestDist); 
+        if (bestType === "clear") {
+            rainColors[key] = null;
+            snowColors[key] = null;
+            return null;
+        } else {
+            if (bestType === "rain") {
+                rainColors[key] = bestDbz;
+            } else {
+                snowColors[key] = bestDbz;
+            }
+            return [bestDbz, bestType];
+        }
+    }
+}
+
+
+function convertDbzToIntensity(dbz, type, x, y) {
+    //dbz += 11;
+    intensity = dbz <= 0 ? 0 : dbz >= 50 ? 1 : dbz / 50;
+    if (type === "snow" && intensity > 0.01 && (x % 2 === 0 && y % 2 !== 0 || x % 2 !== 0 && y % 2 === 0)) {
+        intensity *= 2;
+    }
+    return intensity;
+}
+
+var _radarTmpCanvas = null;
+var _radarTmpCtx = null;
+var _colorCache = {};
+
+function drawRadarGrid(ctx, images, grid, offsetX, offsetY) {
+    var s = htmlZoomFactor;
+    /* Reuse one temp canvas across all tiles and frames */
+    if (grayMode && !_radarTmpCanvas) {
+        _radarTmpCanvas = document.createElement("canvas");
+        _radarTmpCanvas.width = TILE_SIZE;
+        _radarTmpCanvas.height = TILE_SIZE;
+        _radarTmpCtx = _radarTmpCanvas.getContext("2d");
+    }
+    for (var row = 0; row < grid.tilesY; row++) {
+        for (var col = 0; col < grid.tilesX; col++) {
+            if (images[row] && images[row][col]) {
+                var dx = col * TILE_SIZE * s - offsetX;
+                var dy = row * TILE_SIZE * s - offsetY;
+                if (!grayMode) {
+                    ctx.drawImage(images[row][col], dx, dy, TILE_SIZE * s, TILE_SIZE * s);
+                    continue;
+                }
+                _radarTmpCtx.drawImage(images[row][col], 0, 0);
+                var imageData = _radarTmpCtx.getImageData(0, 0, TILE_SIZE, TILE_SIZE);
+                var data = imageData.data;
+                var px = 0, py = 0;
+
+                for (var i = 0; i < data.length; i += 4) {
+                    /* Skip transparent pixels — vast majority of radar tiles */
+                    if (data[i + 3] === 0) {
+                        if (++px >= TILE_SIZE) { px = 0; py++; }
+                        continue;
+                    }
+
+                    var r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+                    /* Numeric cache key: avoids string allocation per pixel */
+                    var ck = r * 16777216 + g * 65536 + b * 256 + a;
+                    var result;
+                    if (ck in _colorCache) {
+                        result = _colorCache[ck];
+                    } else {
+                        result = convertColorToDbz(r, g, b, a);
+                        _colorCache[ck] = result;
+                    }
+
+                    if (result !== null) {
+                        var intensity = convertDbzToIntensity(result[0], result[1], px, py);
+                        var gray = Math.round((1 - intensity) * 255);
+                        data[i] = gray;
+                        data[i + 1] = gray;
+                        data[i + 2] = gray;
+                        data[i + 3] = intensity > 0 ? Math.round(intensity * 255) : 0;
+                    }
+
+                    if (++px >= TILE_SIZE) { px = 0; py++; }
+                }
+                _radarTmpCtx.putImageData(imageData, 0, 0);
+                ctx.drawImage(_radarTmpCanvas, dx, dy, TILE_SIZE * s, TILE_SIZE * s);
+            }
+        }
+    }
+}
+
+
+/* ========== RAINVIEWER API ========== */
+
+function fetchRadarData(callback) {
+    httpGet(RAINVIEWER_API, function(err, data) {
+        if (err || !data || !data.radar) {
+            callback("Failed to load radar data", null);
+            return;
+        }
+        callback(null, {
+            host: data.host,
+            past: data.radar.past || [],
+            nowcast: data.radar.nowcast || []
+        });
+    });
+}
+
+
+/* ========== E-INK PROCESSING ========== */
+
+function processForEink(ctx, width, height) {
+    try {
+        var imageData = ctx.getImageData(0, 0, width, height);
+        var data = imageData.data;
+        for (var i = 0; i < data.length; i += 4) {
+            var gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+            gray = Math.round((gray - 50) * (255 / 180));
+            if (gray < 0) gray = 0;
+            if (gray > 255) gray = 255;
+            data[i] = gray;
+            data[i + 1] = gray;
+            data[i + 2] = gray;
+        }
+        ctx.putImageData(imageData, 0, 0);
+        console.log("processForEink: OK (" + width + "x" + height + ")");
+    } catch (e) {
+        console.log("processForEink: FAILED - " + e.message);
+    }
+}
+
+/* ========== CROSSHAIR ========== */
+
+function drawCrosshair(ctx, canvasW, canvasH) {
+    var cx = Math.floor(canvasW / 2);
+    var cy = Math.floor(canvasH / 2);
+    var size = 10;
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, size, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, size - 2, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.fillStyle = "black";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2, 0, 2 * Math.PI);
+    ctx.fill();
+}
+
+/* ========== RENDERING MODES ========== */
+
+function selectFrames(allFrames, count) {
+    if (allFrames.length <= count) return allFrames;
+    var step = (allFrames.length - 1) / (count - 1);
+    var selected = [];
+    for (var i = 0; i < count; i++) {
+        selected.push(allFrames[Math.round(i * step)]);
+    }
+    return selected;
+}
+
+
+function renderGridMode(ctx, canvasW, canvasH, baseImages, radarFrames, grid, offsetX, offsetY) {
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    var frames = selectFrames(radarFrames, 3);
+    var panelWidth = Math.floor(canvasW / 3);
+
+    for (var i = 0; i < 3; i++) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(i * panelWidth, 0, panelWidth, canvasH);
+        ctx.clip();
+        ctx.globalAlpha = 1.0;
+        drawTileGrid(ctx, baseImages, grid, offsetX, offsetY);
+        if (frames[i]) {
+            ctx.globalAlpha = 0.8;
+            drawRadarGrid(ctx, frames[i].images, grid, offsetX, offsetY);
+        }
+        ctx.restore();
+
+        if (i > 0) {
+            ctx.strokeStyle = "black";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(i * panelWidth, 0);
+            ctx.lineTo(i * panelWidth, canvasH);
+            ctx.stroke();
+        }
+    }
+    ctx.globalAlpha = 1.0;
+    //if (grayMode) processForEink(ctx, canvasW, canvasH);
+    drawCrosshair(ctx, canvasW, canvasH);
+}
+
+function renderLatestMode(ctx, canvasW, canvasH, baseImages, radarFrames, grid, offsetX, offsetY) {
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    ctx.globalAlpha = 1.0;
+    drawTileGrid(ctx, baseImages, grid, offsetX, offsetY);
+    if (radarFrames.length > 0) {
+        ctx.globalAlpha = 0.8;
+        drawRadarGrid(ctx, radarFrames[radarFrames.length - 1].images, grid, offsetX, offsetY);
+    }
+    ctx.globalAlpha = 1.0;
+    //if (grayMode) processForEink(ctx, canvasW, canvasH);
+    drawCrosshair(ctx, canvasW, canvasH);
+}
+
+/* ========== TIME DISPLAY ========== */
+
+function formatTime(unixTime) {
+    var d = new Date(unixTime * 1000);
+    var h = d.getHours();
+    var m = d.getMinutes();
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+}
+
+function updateTimeDisplay(frames, mode) {
+    if (!frames || frames.length === 0) {
+        show("radar-time", "No radar data");
+        return;
+    }
+    var oldest = frames[0];
+    var latest = frames[frames.length - 1];
+    var timeStr = formatTime(oldest.time) + " &#8594; " + formatTime(latest.time);
+    if (mode === "latest") {
+        timeStr = formatTime(latest.time);
+    }
+    show("radar-time", timeStr);
+}
+
+/* ========== ANIMATION ========== */
+
+function renderSingleFrame(ctx, cw, ch, baseImgs, radarFrame, grid, ox, oy) {
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.globalAlpha = 1.0;
+    drawTileGrid(ctx, baseImgs, grid, ox, oy);
+    if (radarFrame && radarFrame.images) {
+        ctx.globalAlpha = 0.8;
+        drawRadarGrid(ctx, radarFrame.images, grid, ox, oy);
+    }
+    ctx.globalAlpha = 1.0;
+    //if (grayMode) processForEink(ctx, cw, ch);
+    drawCrosshair(ctx, cw, ch);
+}
+
+function updateAnimUI() {
+    if (!animFrames.length) return;
+    var frame = animFrames[animIdx];
+    var progress = Math.round((animIdx / Math.max(animFrames.length - 1, 1)) * 100);
+    var el = document.getElementById("anim-time");
+    if (el) el.innerHTML = formatTime(frame.time);
+    var fill = document.getElementById("anim-fill");
+    if (fill) fill.style.width = progress + "%";
+}
+
+function scheduleNext() {
+    if (!animPlaying) return;
+    if (animIdx === animFrames.length - 1) {
+        /* Stop after one complete pass */
+        stopAnim();
+        return;
+    }
+    animTimer = setTimeout(function() {
+        animIdx++;
+        animStep();
+    }, ANIM_SPEED);
+}
+
+function animStep() {
+    renderSingleFrame(animCtx, animCanvas.width, animCanvas.height, animBaseImages, animFrames[animIdx], animGrid, animOffX, animOffY);
+    updateAnimUI();
+    scheduleNext();
+}
+
+function startAnim() {
+    if (animFrames.length <= 1) return;
+    animPlaying = true;
+    animIdx = 0;
+    animStep();
+    var btn = document.getElementById("anim-btn");
+    if (btn) btn.innerHTML = "&#9646;&#9646;";
+}
+
+function stopAnim() {
+    animPlaying = false;
+    if (animTimer) { clearTimeout(animTimer); animTimer = null; }
+    var btn = document.getElementById("anim-btn");
+    if (btn) btn.innerHTML = "&#9654;";
+}
+
+function toggleAnimation() {
+    if (animPlaying) stopAnim();
+    else startAnim();
+}
+
+function initAnimation(ctx, canvas, baseImgs, frames, grid, ox, oy) {
+    animCtx = ctx;
+    animCanvas = canvas;
+    animBaseImages = baseImgs;
+    animFrames = frames;
+    animGrid = grid;
+    animOffX = ox;
+    animOffY = oy;
+    animIdx = 0;
+
+    var ctrl = document.getElementById("anim-controls");
+    if (ctrl) ctrl.style.display = "";
+    show("radar-time", "");
+
+    if (frames.length > 0) {
+        var startEl = document.getElementById("anim-start");
+        var endEl = document.getElementById("anim-end");
+        if (startEl) startEl.innerHTML = formatTime(frames[0].time);
+        if (endEl) endEl.innerHTML = formatTime(frames[frames.length - 1].time);
+    }
+
+    if (frames.length <= 1) {
+        renderSingleFrame(ctx, canvas.width, canvas.height, baseImgs, frames[0] || null, grid, ox, oy);
+        updateAnimUI();
+        return;
+    }
+
+    startAnim();
+}
+
+/* ========== LEGEND ========== */
+
+function renderLegend() {
+    return; // hide legend for now, to save space
+    var html = '<span style="font-size:20px">Light</span> ';
+    for (var i = 0; i < 10; i++) {
+        var gray = 200 - Math.round(i * 20);
+        html += '<span style="display:inline-block;width:8%;height:14px;background:rgb(' + gray + ',' + gray + ',' + gray + ');border:1px solid #999"></span>';
+    }
+    html += ' <span style="font-size:20px">Heavy</span>';
+    show("legend", html);
+}
+
+/* ========== HEADER ========== */
+
+function buildPageUrl(overrides) {
+    var params = parseRadarParams();
+    var keys = ["location", "latitude", "longitude", "zoom", "mode", "gray", "rotation", "scale"];
+    for (var i = 0; i < keys.length; i++) {
+        if (overrides[keys[i]] !== undefined) params[keys[i]] = overrides[keys[i]];
+    }
+    var qs = "";
+    var shortMap = { "location": "l", "latitude": "lat", "longitude": "lon", "zoom": "z", "mode": "m", "gray": "g", "rotation": "r", "scale": "s" };
+    for (var j = 0; j < keys.length; j++) {
+        var v = params[keys[j]];
+        if (v != null && v !== "") {
+            var sk = shortMap[keys[j]] || keys[j];
+            qs += (qs ? "&" : "?") + sk + "=" + encodeURIComponent(v);
+        }
+    }
+    return window.location.pathname + qs;
+}
+
+function goLocation() {
+    var inp = document.getElementById("loc-input");
+    if (!inp || !inp.value) return;
+    window.location.href = buildPageUrl({"location": inp.value, "latitude": "", "longitude": ""});
+}
+
+function renderHeader(name, status) {
+    var escapedName = name.replace(/"/g, '&quot;');
+    var statusText = status || "RADAR";
+    show("header", '<table class="hdr-row"><tr>' +
+        '<td><form onsubmit="goLocation();return false;" class="loc-form"><input id="loc-input" class="loc-input" value="' + escapedName + '"><input type="submit" value="Go" class="go-btn"></form></td>' +
+        '<td class="hdr-right"><span id="hdr-status">' + statusText + '</span></td>' +
+        '</tr></table>');
+}
+
+function showStatus(text) {
+    var el = document.getElementById("hdr-status");
+    if (el) el.innerHTML = text || "RADAR";
+}
+
+/* ========== URL PARAMS ========== */
+
+function parseRadarParams(defaults) {
+    var params = parseUrlParams(defaults || {});
+    /* Handle rain.html-specific short params */
+    var qs = window.location.search.substring(1);
+    if (!qs) return params;
+    var pairs = qs.split("&");
+    var radarMap = { "z": "zoom", "m": "mode", "g": "gray" };
+    for (var i = 0; i < pairs.length; i++) {
+        var pair = pairs[i].split("=");
+        if (pair.length === 2) {
+            var key = decodeURIComponent(pair[0]);
+            var value = decodeURIComponent(pair[1]);
+            var longKey = radarMap[key];
+            if (longKey) params[longKey] = value;
+        }
+    }
+    return params;
+}
+
+/* ========== ROTATION/SCALE (same as k.html) ========== */
+
+function setupRotation(angle, zoom) {
+    var deg = parseInt(angle, 10);
+    if (isNaN(deg)) return;
+    if (!zoom || zoom <= 0) zoom = 1;
+    var el = document.getElementById("wrapper");
+    if (!el) return;
+    var w = window.innerWidth || document.documentElement.clientWidth || screen.width || 600;
+    var h = window.innerHeight || document.documentElement.clientHeight || screen.height || 800;
+    var a = Math.abs(deg % 360);
+    if (a === 90 || a === 270) {
+        var wrapW = Math.round(h / zoom);
+        var wrapH = Math.round(w / zoom);
+        el.style.width = wrapW + "px";
+        el.style.height = wrapH + "px";
+        el.style.position = "absolute";
+        el.style.left = Math.round((w - wrapW) / 2) + "px";
+        el.style.top = Math.round((h - wrapH) / 2) + "px";
+        el.style.overflow = "hidden";
+    }
+    var xf = "rotate(" + deg + "deg)";
+    if (zoom !== 1) xf += " scale(" + zoom + ")";
+    el.style.webkitTransformOrigin = "50% 50%";
+    el.style.webkitTransform = xf;
+    el.style.transformOrigin = "50% 50%";
+    el.style.transform = xf;
+}
+
+/* ========== MAIN FLOW ========== */
+
+function loadRadar(lat, lon, name, zoom, mode) {
+    currentLat = lat;
+    currentLon = lon;
+    locationName = name;
+
+    show("error", "");
+    renderHeader(name, "...");
+
+    var canvas = document.getElementById("radar-canvas");
+    var wrapper = document.getElementById("wrapper");
+    var isLandscape = (" " + document.body.className + " ").indexOf(" landscape ") >= 0;
+    /* Use wrapper height when explicitly set by rotation, else viewport */
+    var effectiveH = wrapper.style.height ? (parseInt(wrapper.style.height, 10) || (window.innerHeight || 800)) : (window.innerHeight || 800);
+    var wrapPad = isLandscape ? 12 : 28;
+    var wrapperWidth = wrapper.clientWidth - wrapPad;
+    /* Measure actual header height instead of guessing */
+    var headerEl = document.getElementById("header");
+    var headerH = headerEl ? headerEl.offsetHeight + 6 : 55; /* +6 for margin-bottom */
+    var canvasBorder = 4; /* 2px border top + bottom */
+    /* Reserve space for anim controls below canvas */
+    var bottomReserve = isLandscape ? 30 : 55;
+    var wrapperHeight = effectiveH - wrapPad - headerH - canvasBorder - bottomReserve;
+    if (wrapperHeight < 200) wrapperHeight = 200;
+
+    canvas.width = wrapperWidth;
+    canvas.height = wrapperHeight;
+    var ctx = canvas.getContext("2d");
+
+    /* Cap tile zoom at radar max; scale up via drawImage for higher levels */
+    var tileZoom = Math.min(zoom, RADAR_MAX_ZOOM);
+    htmlZoomFactor = Math.pow(2, zoom - tileZoom);
+    var s = htmlZoomFactor;
+
+    /* Calculate tile grid centered on location */
+    var center = latLonToTilePixel(lat, lon, tileZoom);
+    var grid = calculateGrid(canvas.width, canvas.height);
+    grid.zoom = tileZoom;
+    grid.startX = center.tileX - Math.floor(grid.tilesX / 2);
+    grid.startY = center.tileY - Math.floor(grid.tilesY / 2);
+    var centerPxX = center.pixelX + Math.floor(grid.tilesX / 2) * TILE_SIZE;
+    var centerPxY = center.pixelY + Math.floor(grid.tilesY / 2) * TILE_SIZE;
+    var offsetX = centerPxX * s - Math.floor(canvas.width / 2);
+    var offsetY = centerPxY * s - Math.floor(canvas.height / 2);
+
+    /* 1. Load base map tiles */
+    showStatus("M...");
+    loadTileGrid(function(z, x, y) { return baseTileUrl(z, x, y); }, grid, function(err, baseImages) {
+        /* Show base map immediately */
+        ctx.globalAlpha = 1.0;
+        drawTileGrid(ctx, baseImages, grid, offsetX, offsetY);
+
+        /* 2. Fetch RainViewer timestamps */
+        showStatus("R...");
+        fetchRadarData(function(err, radarData) {
+            if (err || !radarData) {
+                showStatus("");
+                show("error", "Radar data unavailable");
+                //if (grayMode) processForEink(ctx, canvas.width, canvas.height);
+                drawCrosshair(ctx, canvas.width, canvas.height);
+                renderLegend();
+                return;
+            }
+
+            var allPast = radarData.past || [];
+            var allNowcast = radarData.nowcast || [];
+            var allFrames = allPast.concat(allNowcast);
+
+            if (allFrames.length === 0) {
+                showStatus("");
+                show("error", "No radar data for this region");
+                //if (grayMode) processForEink(ctx, canvas.width, canvas.height);
+                drawCrosshair(ctx, canvas.width, canvas.height);
+                renderLegend();
+                return;
+            }
+
+            /* Select frames based on mode */
+            var framesToLoad;
+            if (mode === "latest") {
+                framesToLoad = [allFrames[allFrames.length - 1]];
+            } else if (mode === "grid") {
+                framesToLoad = selectFrames(allPast, 3);
+            } else {
+                /* trail mode: limit frames to reduce tile requests */
+                framesToLoad = selectFrames(allFrames, TRAIL_FRAMES);
+            }
+
+            /* 3. Load radar tiles for each frame sequentially */
+            var loadedFrames = [];
+            var frameIdx = 0;
+
+            function loadNextFrame() {
+                if (frameIdx >= framesToLoad.length) {
+                    /* All frames loaded — render */
+                    showStatus("");
+                    if (mode === "grid") {
+                        renderGridMode(ctx, canvas.width, canvas.height, baseImages, loadedFrames, grid, offsetX, offsetY);
+                        updateTimeDisplay(loadedFrames, mode);
+                    } else if (mode === "latest") {
+                        renderLatestMode(ctx, canvas.width, canvas.height, baseImages, loadedFrames, grid, offsetX, offsetY);
+                        updateTimeDisplay(loadedFrames, mode);
+                    } else {
+                        initAnimation(ctx, canvas, baseImages, loadedFrames, grid, offsetX, offsetY);
+                    }
+                    renderLegend();
+                    return;
+                }
+
+                var frame = framesToLoad[frameIdx];
+                showStatus("R " + (frameIdx + 1) + "/" + framesToLoad.length);
+                loadTileGrid(function(z, x, y) {
+                    return radarTileUrl(radarData.host, frame.path, z, x, y);
+                }, grid, function(err, radarImages) {
+                    loadedFrames.push({
+                        time: frame.time,
+                        images: radarImages
+                    });
+                    frameIdx++;
+                    /* Delay between frames to avoid 429 rate limiting from RainViewer */
+                    setTimeout(loadNextFrame, 200);
+                });
+            }
+
+            loadNextFrame();
+        });
+    });
+}
+
+/* ========== AUTO REFRESH ========== */
+setInterval(function() { window.location.reload(); }, 600000);
+
+/* ========== INIT ========== */
+window.onload = function() {
+    var params = parseRadarParams({"location": "Lisbon, Portugal"});
+    var loc = params["location"] || "";
+    var lat = params["latitude"] || "";
+    var lon = params["longitude"] || "";
+    var rParam = params["rotation"] || "";
+    var sParam = params["scale"] || "";
+
+    var zoom = parseInt(params["zoom"] || DEFAULT_ZOOM, 10);
+    if (isNaN(zoom) || zoom < 0) zoom = 0;
+    if (zoom > MAX_ZOOM) zoom = MAX_ZOOM;
+
+    var mode = params["mode"] || "trail";
+    if (mode !== "trail" && mode !== "grid" && mode !== "latest") mode = "trail";
+
+    var gParam = params["gray"];
+    if (gParam === "0" || gParam === "false" || gParam === "off") grayMode = false;
+
+    var zoomScale = 1;
+    if (sParam) {
+        zoomScale = parseInt(sParam, 10) / 100;
+        if (isNaN(zoomScale) || zoomScale <= 0) zoomScale = 1;
+    }
+    if (rParam) {
+        setupRotation(rParam, zoomScale);
+    } else if (zoomScale !== 1) {
+        var el = document.getElementById("wrapper");
+        if (el) el.style.zoom = zoomScale;
+    }
+
+    /* Detect effective landscape (including rotation-induced) */
+    var viewW = window.innerWidth || 600;
+    var viewH = window.innerHeight || 800;
+    if (rParam) {
+        var rDeg = Math.abs(parseInt(rParam, 10) % 360);
+        if (rDeg === 90 || rDeg === 270) {
+            var tmp = viewW; viewW = viewH; viewH = tmp;
+        }
+    }
+    if (viewW > viewH) {
+        document.body.className = "landscape";
+    }
+
+    if (lat && lon) {
+        locationName = loc || lat + ", " + lon;
+        show("header", locationName);
+        loadRadar(parseFloat(lat), parseFloat(lon), locationName, zoom, mode);
+    } else if (loc) {
+        show("header", "Loading...");
+        geocode(loc, function(err, gLat, gLon, name) {
+            if (err) {
+                showStatus("");
+                show("error", "Location not found: " + loc);
+                return;
+            }
+            locationName = name;
+            loadRadar(parseFloat(gLat), parseFloat(gLon), name, zoom, mode);
+        });
+    } else {
+        show("header", "WEIRDTHER RADAR");
+        show("loading", "Add ?l=City to the URL");
+    }
+};
+</script>
+</body>
+</html>
