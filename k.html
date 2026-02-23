@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><title>Weirdther</title>
 <script src="weirdther-core.js"></script>
+<script src="weather-icons-eink.js"></script>
 <style>
 body { margin: 0; padding: 0; background: white; color: black; }
 #wrapper { padding: 18px 22px; font-family: Helvetica, Arial, sans-serif; -webkit-box-sizing: border-box; box-sizing: border-box; overflow: hidden; }
@@ -38,7 +39,8 @@ table.fc th, table.fc td { border: none; padding: 5px 7px; text-align: right; fo
 table.fc th { background: #bbb; color: black; font-size: 36px; }
 table.fc th:first-child, table.fc td:first-child { width: 1px; white-space: nowrap; padding: 5px 4px; }
 table.fc .day-col { text-align: left; }
-table.fc .icon-col { font-size: 46px; text-align: center; width: 48px; }
+table.fc .icon-col { text-align: center; width: 52px; padding: 4px 2px; }
+.hdr-right .icon-col { display: inline-block; vertical-align: middle; }
 table.fc .bld { font-weight: bold; color: white; background: black; }
 table.fc .bld-lo { font-weight: bold; color: white; background: gray; }
 table.fc a { color: black; text-decoration: underline; }
@@ -207,7 +209,7 @@ function geocode(location, callback) {
 
 
 function fetchForecast(lat, lon, units, callback) {
-    var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&past_days=1&latitude=" + lat + "&longitude=" + lon + "&daily=" + DAILY_VARS;
+    var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&past_days=1&latitude=" + lat + "&longitude=" + lon + "&daily=" + DAILY_VARS + ",weather_code";
     var us = getUnitString(units);
     if (us) url += "&" + us;
     httpGet(url, callback);
@@ -587,7 +589,8 @@ function fmtVal(varName, value, units) {
     return (value != null ? value.toFixed(1) : "0") + FRIENDLY[varName][units];
 }
 
-function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate) {
+function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate, weatherCodes) {
+    weatherCodes = weatherCodes || {};
     var html = "";
     var nowStr = toISODate(new Date());
 
@@ -600,6 +603,8 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate)
 
     var isToday = (today.date === nowStr);
     var wx = getWeather(today.rain, today.snow, today.sunshinePct, today.wind, units);
+    var todayWxCode = weatherCodes[today.date];
+    var wxIcon = todayWxCode != null ? '<span class="icon-col">' + getWeatherIconEink(todayWxCode) + '</span>' : wx.icon;
     var label = getScoreLabel(today.weirdther);
     var dateLabel = isToday ? "Today" : formatDateShort(today.date);
     var hideRain = !!hideVars["rain_sum"];
@@ -613,7 +618,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate)
     var unitF = units === "imperial" ? "<b>F</b>" : '<a href="' + imperialUrl + '">F</a>';
     show("header", '<table class="hdr-row"><tr>' +
         '<td><form onsubmit="goLocation();return false;" class="loc-form"><input id="loc-input" class="loc-input" value="' + escapedName + '"><input type="submit" value="Go" class="go-btn"></form></td>' +
-        '<td class="hdr-right">' + unitC + '|' + unitF + ' ' + wx.icon + ' ' + dateLabel + '</td>' +
+        '<td class="hdr-right">' + unitC + '|' + unitF + ' ' + wxIcon + ' ' + dateLabel + '</td>' +
         '</tr></table>');
 
     /* ---- Vars left, score right ---- */
@@ -627,7 +632,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate)
         if (!vi) continue;
         var cls = unusualClass(vi.raw);
         html += '<tr' + (cls ? ' class="' + cls + '"' : '') + '>';
-        html += '<td class="vi">' + VAR_ICONS[vn] + '</td>';
+        html += '<td class="vi">' + getVarIconEink(vn) + '</td>';
         html += '<td>' + fmtVal(vn, vi.value, units) + '</td>';
         html += '<td class="pct">' + pctPretty(vi.raw) + '</td>';
         html += '</tr>';
@@ -648,10 +653,10 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate)
 
     /* ---- Forecast table with values, clickable days ---- */
     html += '<table class="fc">';
-    html += '<tr><th></th><th class="day-col">Day</th><th>&#9650;</th><th>&#9660;</th>';
-    if (!hideRain) html += '<th>&#9730;</th>';
-    if (!hideSnow) html += '<th>&#9731;</th>';
-    html += '<th><b>&#8776;</b></th><th>&#9728;</th><th>W</th></tr>';
+    html += '<tr><th></th><th class="day-col">Day</th><th>' + getVarIconEink("temperature_2m_max") + '</th><th>' + getVarIconEink("temperature_2m_min") + '</th>';
+    if (!hideRain) html += '<th>' + getVarIconEink("rain_sum") + '</th>';
+    if (!hideSnow) html += '<th>' + getVarIconEink("snowfall_sum") + '</th>';
+    html += '<th>' + getVarIconEink("wind_speed_10m_max") + '</th><th>' + getVarIconEink("sunshine_duration") + '</th><th>W</th></tr>';
 
     for (var d = 0; d < dayScores.length; d++) {
         var ds = dayScores[d];
@@ -659,6 +664,8 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate)
         var isActualToday = (ds.date === nowStr);
         var dayLabel = isActualToday ? "Today" : formatDateShort(ds.date);
         var rwx = getWeather(ds.rain, ds.snow, ds.sunshinePct, ds.wind, units);
+        var rowWxCode = weatherCodes[ds.date];
+        var rowIcon = rowWxCode != null ? getWeatherIconEink(rowWxCode) : rwx.icon;
         var link = buildDateLink(ds.date);
 
         var cTempMax = ds.vars["temperature_2m_max"] ? unusualClass(ds.vars["temperature_2m_max"].raw) : "";
@@ -668,7 +675,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate)
         var sunPct = Math.round(ds.sunshinePct * 100) + "%";
 
         html += '<tr' + (isSelectedRow ? ' style="border-top:2px solid #000;border-bottom:2px solid #000"' : '') + '>';
-        html += '<td class="icon-col">' + rwx.icon + '</td>';
+        html += '<td class="icon-col">' + rowIcon + '</td>';
         html += '<td class="day-col"><a href="' + link + '"' + (isSelectedRow ? ' style="font-weight:bold"' : '') + '>' + dayLabel + '</a></td>';
         html += '<td' + (cTempMax ? ' class="' + cTempMax + '"' : '') + '>' + Math.round(ds.tempMax) + '</td>';
         html += '<td' + (cTempMin ? ' class="' + cTempMin + '"' : '') + '>' + Math.round(ds.tempMin) + '</td>';
@@ -776,6 +783,14 @@ function loadWeather(lat, lon, units, dateStr) {
                         return;
                     }
 
+                    // Save weather_code from forecast before merge (merge drops non-VAR_LIST fields)
+                    var forecastWeatherCodes = {};
+                    if (forecast.daily.weather_code) {
+                        for (var wi = 0; wi < forecast.daily.time.length; wi++) {
+                            forecastWeatherCodes[forecast.daily.time[wi]] = forecast.daily.weather_code[wi];
+                        }
+                    }
+
                     // Merge forecast with historical data for current dates
                     var mergedForecast = mergeForecastHistorical(forecast, currentHistorical);
 
@@ -826,7 +841,7 @@ function loadWeather(lat, lon, units, dateStr) {
                         return;
                     }
 
-                    renderAll(scores, units, startYear, endYear, hideVars, dateStr);
+                    renderAll(scores, units, startYear, endYear, hideVars, dateStr, forecastWeatherCodes);
                 }
             );
         });
