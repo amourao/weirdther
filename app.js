@@ -725,7 +725,7 @@ async function getCurrentWeather(location = DEFAULT_LOCATION, unitsType = "metri
     }
 
     location = [location[0].toFixed(2), location[1].toFixed(2)];
-    const url = `https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=${location[0]}&longitude=${location[1]}&current=${VARS_TO_GET_HOURLY}&daily=${VARS_TO_GET_DAILY}&${unitString}`;
+    const url = `https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=${location[0]}&longitude=${location[1]}&current=${VARS_TO_GET_HOURLY}&daily=${VARS_TO_GET_DAILY},weather_code&${unitString}`;
     console.log("Fetching current weather from: " + url);
     const response = await fetch(url);
     const data = await response.json();
@@ -736,6 +736,9 @@ async function getCurrentWeather(location = DEFAULT_LOCATION, unitsType = "metri
 function splitPastPresentFuture(data, current_date, delta = DEFAULT_DELTA) {
     var daily = [{"daily": {}}, {"daily": {}}, {"daily": {}}];
     var vars = ("time," + VARS_TO_GET_DAILY).split(",");
+    if (data["daily"]["weather_code"]) {
+        vars.push("weather_code");
+    }
     var today = current_date.toISOString().split('T')[0];
     var delta_ends = new Date(current_date);
     delta_ends.setDate(new Date(current_date).getDate()+parseInt(delta));

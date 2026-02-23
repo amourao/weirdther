@@ -204,6 +204,13 @@ body {
 
 .weather-icon {
     font-size: 64px;
+    width: 64px;
+    height: 64px;
+}
+
+.weather-icon svg {
+    width: 100%;
+    height: 100%;
 }
 
 
@@ -379,7 +386,14 @@ body {
 
 .forecast-icon {
     font-size: 40px;
+    width: 40px;
+    height: 40px;
     margin-bottom: 8px;
+}
+
+.forecast-icon svg {
+    width: 100%;
+    height: 100%;
 }
 
 .percentile-bars {
@@ -474,9 +488,11 @@ body {
 }
 
 @media (max-width: 768px) {
-    
+
     .weather-icon {
         font-size: 56px;
+        width: 56px;
+        height: 56px;
     }
     
     .weirdther-today {
@@ -503,9 +519,11 @@ body {
 }
 
 @media (max-width: 480px) {
-    
+
     .weather-icon {
         font-size: 48px;
+        width: 48px;
+        height: 48px;
     }
     
     .weirdther-today-value {

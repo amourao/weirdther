@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Weirdther Widget</title>
     <script src="weirdther-core.js"></script>
+    <script src="weather-icons.js"></script>
     <script src="app.js"></script>
     <link rel="stylesheet" href="widget.css">
 </head>
@@ -241,7 +242,8 @@
                     snowfall_sum: todayData.percentiles.snowfall_sum ? [todayData.percentiles.snowfall_sum[0], ...(futureData.percentiles.snowfall_sum || [])] : null
                 },
                 weirdther_score: [todayData.weirdther_score[0], ...futureData.weirdther_score],
-                snowfall_sum: todayData.snowfall_sum ? [todayData.snowfall_sum[0], ...(futureData.snowfall_sum || [])] : null
+                snowfall_sum: todayData.snowfall_sum ? [todayData.snowfall_sum[0], ...(futureData.snowfall_sum || [])] : null,
+                weather_code: todayData.weather_code ? [todayData.weather_code[0], ...(futureData.weather_code || [])] : null
             };
             
             forecastGrid.innerHTML = allDays.time.map((date, index) => {
@@ -262,7 +264,8 @@
                     snow: allDays.percentiles.snowfall_sum ? parseFloat(allDays.percentiles.snowfall_sum[index]) : 0
                 };
 
-                const icon = getWeatherIcon(rain, snow, sunshine, wind, units);
+                const weatherCode = allDays.weather_code ? allDays.weather_code[index] : null;
+                const icon = weatherCode != null ? getWeatherIconSVG(weatherCode) : getWeatherIcon(rain, snow, sunshine, wind, units);
                 const weirdClass = weirdScore == 100 ? 'extreme-weird' : (weirdScore > 70 ? 'high-weird' : (weirdScore < 30 ? 'low-weird' : 'moderate-weird'));
                 const weirdLabel = weirdScore == 100 ? 'UNPRECEDENTED' : (weirdScore > 70 ? 'UNUSUAL' : (weirdScore < 30 ? 'TYPICAL' : 'MODERATE'));
 
@@ -387,8 +390,13 @@
             }
             
             // Update weather icon
-            const icon = getWeatherIcon(rain, snow, sunshine);
-            document.getElementById('weatherIcon').textContent = icon;
+            const weatherCode = data.weather_code ? data.weather_code[index] : null;
+            const iconEl = document.getElementById('weatherIcon');
+            if (weatherCode != null) {
+                iconEl.innerHTML = getWeatherIconSVG(weatherCode);
+            } else {
+                iconEl.textContent = getWeatherIcon(rain, snow, sunshine);
+            }
             
             // Update condition
             document.getElementById('condition').textContent = getConditionFromData(rain, snow, sunshine);
