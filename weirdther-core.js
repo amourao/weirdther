@@ -4,7 +4,8 @@
 
 /* ========== CONFIGURATION ========== */
 var WEIRDTHER_CONFIG = {
-    DAILY_VARS: "temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max,sunshine_duration",
+    DAILY_VARS: "weather_code,temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration,daylight_duration,relative_humidity_2m",
+    HOURLY_VARS: "temperature_2m,weather_code,relative_humidity_2m,precipitation_probability,rain,showers,snowfall,visibility,cloud_cover,wind_speed_10m,wind_gusts_10m",
     DEFAULT_DELTA: 5,
     HISTORICAL_YEARS: 26,
     SCORE_VARS: ["temperature_2m_max", "temperature_2m_min", "rain_sum", "snowfall_sum", "wind_speed_10m_max", "sunshine_duration"],
@@ -21,10 +22,13 @@ var WEIRDTHER_CONFIG = {
     SCORE_EXTREME_BOOST: 4,       // Multiplier for excess beyond threshold
     SCORE_DENOM: 2.0,             // Fixed denominator for RMS (rewards breadth)
     METRIC_UNIT_STRING: "",
-    IMPERIAL_UNIT_STRING: "temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch"
 };
 
 /* ========== UTILITY FUNCTIONS ========== */
+
+function cacheKey(dateStr, lat, lon) {
+    return "historical-" + dateStr + "-" + lat + "-" + lon + ".json";
+}
 
 /**
  * Parses URL query string parameters with support for both short and long names
@@ -170,10 +174,6 @@ function filterHistoricalByDateWindow(values, dates, currentDate, delta, climate
     return { dates: filteredDates, values: filteredValues };
 }
 
-function getUnitString(units) {
-    if (units === "imperial") return WEIRDTHER_CONFIG.IMPERIAL_UNIT_STRING;
-    return WEIRDTHER_CONFIG.METRIC_UNIT_STRING;
-}
 
 /* ========== DAYLIGHT CALCULATION ========== */
 
@@ -335,29 +335,6 @@ function groupAllHistorical(datas) {
         }
     }
     return grouped;
-}
-
-/* ========== WEATHER CLASSIFICATION ========== */
-
-function getWeather(rain, snow, sunshinePct, wind, units) {
-    var rMm = rain, sMm = snow, wKmh = wind;
-    if (units === "imperial") {
-        rMm = rain * 25.4;
-        sMm = snow * 25.4;
-        wKmh = wind * 1.60934;
-    }
-    var c = "", icon = "";
-    if (sMm > 0)               { c = "Snow";       icon = "&#10052;"; }
-    else if (rMm > 20)         { c = "Heavy Rain"; icon = "&#9730;"; }
-    else if (rMm > 0)          { c = "Rain";       icon = "&#9730;"; }
-    else if (sunshinePct < 0.10){ c = "Overcast";  icon = "&#9729;"; }
-    else if (sunshinePct < 0.30){ c = "Cloudy";    icon = "&#9729;"; }
-    else if (sunshinePct < 0.60){ c = "Pt.Cloudy"; icon = "&#9728;"; }
-    else if (sunshinePct < 0.85){ c = "Fair";      icon = "&#9728;"; }
-    else                        { c = "Sunny";     icon = "&#9728;"; }
-    if (wKmh >= 50) c += " +Gale";
-    else if (wKmh >= 25) c += " +Wind";
-    return {text: c, icon: icon};
 }
 
 /* ========== PERCENTILE DISPLAY ========== */

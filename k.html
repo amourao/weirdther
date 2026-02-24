@@ -127,15 +127,11 @@ function setDefaultUnit(unit) {
     } catch (e) {}
 }
 
-function cacheKey(dateStr, lat, lon, units) {
-    return "historical-" + dateStr + "-" + lat + "-" + lon + "-" + units + ".json";
-}
-
 function clearTodayCache(lat, lon, units) {
     /* Only clear today's cache entry to allow fresh data updates */
     if (!useCache) return;
     try {
-        var todayKey = cacheKey(toISODate(new Date()), lat, lon, units);
+        var todayKey = cacheKey(toISODate(new Date()), lat, lon);
         localStorage.removeItem(todayKey);
     } catch (e) {}
 }
@@ -169,19 +165,51 @@ function formatDateShort(dateStr) {
     return days[d.getDay()] + " " + d.getDate() + " " + months[d.getMonth()];
 }
 
+/* ========== UNIT CONVERSION ========== */
+
+function convertToImperial(data) {
+    for (var varName in data) {
+        if (!data.hasOwnProperty(varName)) continue;
+        if (!Array.isArray(data[varName])) continue;
+        if (varName === "temperature_2m_max" || varName === "temperature_2m_min") {
+            for (var i = 0; i < data[varName].length; i++) {
+                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 9/5 + 32;
+            }
+        } else if (varName === "wind_speed_10m_max" || varName === "wind_gusts_10m_max") {
+            for (var i = 0; i < data[varName].length; i++) {
+                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 2.237;
+            }
+        } else if (varName === "rain_sum") {
+            for (var i = 0; i < data[varName].length; i++) {
+                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 0.0393701;
+            }
+        } else if (varName === "snowfall_sum") {
+            for (var i = 0; i < data[varName].length; i++) {
+                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 0.393701;
+            }
+        }
+    }
+    return data;
+}
+
 /* ========== HTTP ========== */
 
 function httpGet(url, callback) {
     var xhr = new XMLHttpRequest();
+    var done = false;
     xhr.open("GET", url, true);
     xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) {
+        if (xhr.readyState === 4 && !done) {
+            done = true;
             if (xhr.status === 200) {
+                var parsed;
                 try {
-                    callback(null, JSON.parse(xhr.responseText));
+                    parsed = JSON.parse(xhr.responseText);
                 } catch (e) {
                     callback("JSON parse error", null);
+                    return;
                 }
+                callback(null, parsed);
             } else {
                 callback("HTTP error " + xhr.status, null);
             }
@@ -210,8 +238,6 @@ function geocode(location, callback) {
 
 function fetchForecast(lat, lon, units, callback) {
     var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&past_days=1&latitude=" + lat + "&longitude=" + lon + "&daily=" + DAILY_VARS + ",weather_code";
-    var us = getUnitString(units);
-    if (us) url += "&" + us;
     httpGet(url, callback);
 }
 
@@ -241,8 +267,6 @@ function fetchHistoricalRange(lat, lon, startDate, endDate, units, callback) {
 
     var url = "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat + "&longitude=" + lon +
               "&start_date=" + toISODate(start) + "&end_date=" + toISODate(end) + "&daily=" + DAILY_VARS;
-    var us = getUnitString(units);
-    if (us) url += "&" + us;
 
     console.log("Fetching historical range: " + toISODate(start) + " to " + toISODate(end));
     console.log("Archive API URL:", url);
@@ -276,7 +300,7 @@ function fetchHistoricalYear(lat, lon, date, delta, year, units, callback) {
         cachedData.daily.time = [];
 
         for (var d = new Date(startDate.getTime()); d <= endDate; d.setDate(d.getDate() + 1)) {
-            var key = cacheKey(toISODate(d), lat, lon, units);
+            var key = cacheKey(toISODate(d), lat, lon);
             try {
                 var cached = localStorage.getItem(key);
                 if (cached) {
@@ -303,8 +327,6 @@ function fetchHistoricalYear(lat, lon, date, delta, year, units, callback) {
     /* Fetch from API */
     var url = "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat + "&longitude=" + lon +
         "&start_date=" + toISODate(startDate) + "&end_date=" + toISODate(endDate) + "&daily=" + DAILY_VARS;
-    var us = getUnitString(units);
-    if (us) url += "&" + us;
     httpGet(url, function(err, data) {
         if (err || !data) {
             callback(err, null);
@@ -316,7 +338,7 @@ function fetchHistoricalYear(lat, lon, date, delta, year, units, callback) {
             try {
                 for (var i = 0; i < data.daily.time.length; i++) {
                     var day = data.daily.time[i];
-                    var key = cacheKey(day, lat, lon, units);
+                    var key = cacheKey(day, lat, lon);
                     var dayData = JSON.parse(JSON.stringify(data));
                     dayData.daily = {};
                     for (var varName in data.daily) {
@@ -602,9 +624,8 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
     var today = dayScores[selectedIdx];
 
     var isToday = (today.date === nowStr);
-    var wx = getWeather(today.rain, today.snow, today.sunshinePct, today.wind, units);
     var todayWxCode = weatherCodes[today.date];
-    var wxIcon = todayWxCode != null ? '<span class="icon-col">' + getWeatherIconEink(todayWxCode) + '</span>' : wx.icon;
+    var wxIcon = '<span class="icon-col">' + getWeatherIconEink(todayWxCode) + '</span>' 
     var label = getScoreLabel(today.weirdther);
     var dateLabel = isToday ? "Today" : formatDateShort(today.date);
     var hideRain = !!hideVars["rain_sum"];
@@ -663,9 +684,8 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
         var isSelectedRow = (ds.date === selectedDate);
         var isActualToday = (ds.date === nowStr);
         var dayLabel = isActualToday ? "Today" : formatDateShort(ds.date);
-        var rwx = getWeather(ds.rain, ds.snow, ds.sunshinePct, ds.wind, units);
         var rowWxCode = weatherCodes[ds.date];
-        var rowIcon = rowWxCode != null ? getWeatherIconEink(rowWxCode) : rwx.icon;
+        var rowIcon = getWeatherIconEink(rowWxCode)
         var link = buildDateLink(ds.date);
 
         var cTempMax = ds.vars["temperature_2m_max"] ? unusualClass(ds.vars["temperature_2m_max"].raw) : "";
@@ -835,6 +855,12 @@ function loadWeather(lat, lon, units, dateStr) {
                     var numDays = NUM_FORECAST_DAYS + ((isSelectedTodayOrFuture && todayIdx > 0) ? 1 : 0);
                     console.log("Score computation: dateStr=" + dateStr + ", todayIdx=" + todayIdx + ", startIdx=" + startIdx + ", numDays=" + numDays + ", isSelectedTodayOrFuture=" + isSelectedTodayOrFuture);
                     console.log("Merged forecast dates:", mergedForecast.daily.time);
+                    // Convert to imperial if needed (both forecast and historical so percentiles stay consistent)
+                    if (units === "imperial") {
+                        convertToImperial(mergedForecast.daily);
+                        convertToImperial(grouped);
+                    }
+
                     var scores = computeAllDayScores(mergedForecast.daily, startIdx, numDays, grouped, lat, units, delta, climateNormal);
                     if (scores.length === 0) {
                         show("error", "No data to display.");
@@ -852,7 +878,10 @@ function loadWeather(lat, lon, units, dateStr) {
 setInterval(function() { window.location.reload(); }, 3600000);
 
 /* ========== INIT ========== */
+var _initDone = false;
 window.onload = function() {
+    if (_initDone) return;
+    _initDone = true;
     var params = parseUrlParams({"location": "Lisbon, Portugal"});
     var loc = params["location"] || "";
     var lat = params["latitude"] || "";

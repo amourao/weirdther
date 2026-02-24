@@ -117,6 +117,10 @@ function setDefaultUnit(unit) {
     localStorage.setItem('unit', unit);
 }
 
+function cacheKey(dateStr, lat, lon) {
+    return "historical-" + dateStr + "-" + lat + "-" + lon + ".json";
+}
+
 
 async function start() {
     isWidget = true;
@@ -719,17 +723,34 @@ function printStats(data, current_value, var_name, current_date, latitude) {
 
 async function getCurrentWeather(location = DEFAULT_LOCATION, unitsType = "metric") {
     // format location to three decimal places
-    var unitString = METRIC
-    if (unitsType === "imperial") {
-        unitString = IMPERIAL
-    }
 
     location = [location[0].toFixed(2), location[1].toFixed(2)];
-    const url = `https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=${location[0]}&longitude=${location[1]}&current=${VARS_TO_GET_HOURLY}&daily=${VARS_TO_GET_DAILY},weather_code&${unitString}`;
+    const url = `https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=${location[0]}&longitude=${location[1]}&current=${VARS_TO_GET_HOURLY}&daily=${VARS_TO_GET_DAILY},weather_code`;
     console.log("Fetching current weather from: " + url);
     const response = await fetch(url);
     const data = await response.json();
+
+    if (unitsType === "imperial") {
+        data["current"] = convertToImperial(data["current"]);
+    }
     
+    return data;
+}
+
+function convertToImperial(data) {
+    for (var varName in data) {
+        if (varName === "temperature_2m" || varName === "apparent_temperature" || varName === "temperature_2m_max" || varName === "temperature_2m_min") {
+            data[varName] = data[varName].map(x => x * 9/5 + 32);
+        } else if (varName === "wind_speed_10m" || varName === "wind_gusts_10m") {
+            data[varName] = data[varName].map(x => x * 2.237);
+        } else if (varName === "rain_sum" ) { // mm
+            data[varName] = data[varName].map(x => x * 0.0393701);
+        } else if (varName === "snowfall_sum" ) { // cm
+            data[varName] = data[varName].map(x => x * 0.393701);
+        } else {
+            data[varName] = data[varName];
+        }
+    }
     return data;
 }
 
@@ -763,7 +784,7 @@ function splitPastPresentFuture(data, current_date, delta = DEFAULT_DELTA) {
     return daily;
 }
 
-async function getWeatherData(start, end, location, unitsType, unitString) {
+async function getWeatherData(start, end, location, unitsType) {
     var output = {};
     var i = 0;
     var missingDays = [];
@@ -772,7 +793,7 @@ async function getWeatherData(start, end, location, unitsType, unitString) {
         end = new Date();
     }
     for (var date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
-        const key = `historical-${date.toISOString().split('T')[0]}-${location[0]}-${location[1]}-${unitsType}.json`;
+        const key = cacheKey(date.toISOString().split('T')[0], location[0], location[1]);
         const storedData = localStorage.getItem(key);
         if (!storedData) {
             missingDays.push(new Date(date));
@@ -793,7 +814,7 @@ async function getWeatherData(start, end, location, unitsType, unitString) {
         // remove from missingDays
         missingDays = missingDays.filter(day => day < internalStart || day > internalEnd);
 
-        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${location[0]}&longitude=${location[1]}&start_date=${internalStart.toISOString().split('T')[0]}&end_date=${internalEnd.toISOString().split('T')[0]}&daily=${VARS_TO_GET_DAILY}&${unitString}`;
+        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${location[0]}&longitude=${location[1]}&start_date=${internalStart.toISOString().split('T')[0]}&end_date=${internalEnd.toISOString().split('T')[0]}&daily=${VARS_TO_GET_DAILY}`;
         console.log("Fetching missing days from: " + url);
         const response = await fetch(url);
         const data = await response.json();
@@ -804,7 +825,7 @@ async function getWeatherData(start, end, location, unitsType, unitString) {
 
         for (let i = 0; i < data.daily.time.length; i++) {
             var day = data.daily.time[i];
-            const key = `historical-${day}-${location[0]}-${location[1]}-${unitsType}.json`;
+            const key = cacheKey(day, location[0], location[1]);
             // build a copy of the data object, but only for this day
             var dayData = JSON.parse(JSON.stringify(data));
             dayData.daily = {};
@@ -819,16 +840,23 @@ async function getWeatherData(start, end, location, unitsType, unitString) {
     var i = 0;
     var missingDays = [];
     for (var date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
-        const key = `historical-${date.toISOString().split('T')[0]}-${location[0]}-${location[1]}-${unitsType}.json`;
+        const key = cacheKey(date.toISOString().split('T')[0], location[0], location[1]);
         const storedData = localStorage.getItem(key);
 
         if (!output.daily) {
             output = JSON.parse(storedData);
+            if (unitsType === "imperial") {
+                output["daily"] = convertToImperial(output["daily"]);
+            }
             i++;
             continue;
         }
         if (storedData) {
             var output_day = JSON.parse(storedData);
+            if (unitsType === "imperial") { 
+                console.log("Converting to imperial units for day: " + output_day.daily.time[0]);
+                output_day["daily"] = convertToImperial(output_day["daily"]);
+            }
             for (var varName in output_day["daily"]) {
                 if (!output.daily[varName]) {
                     output.daily[varName] = [];
@@ -841,18 +869,12 @@ async function getWeatherData(start, end, location, unitsType, unitString) {
     }
 
     // if today's key was fetched, removed stored key for today, to allow updating
-    const todayKey = `historical-${new Date().toISOString().split('T')[0]}-${location[0]}-${location[1]}-${unitsType}.json`;
+    const todayKey = cacheKey(new Date().toISOString().split('T')[0], location[0], location[1]);
     localStorage.removeItem(todayKey);
     return output;
 }
 
 async function getHistoricalWeatherCurrent(location, current_date = new Date(), delta = DEFAULT_DELTA, unitsType = "metric") {
-    // format location to two decimal places
-    var unitString = METRIC
-    if (unitsType === "imperial") {
-        unitString = IMPERIAL
-    }
-
     location = [location[0].toFixed(2), location[1].toFixed(2)];
 
     const start = new Date(current_date.getTime() - delta * 24 * 60 * 60 * 1000);
@@ -860,16 +882,12 @@ async function getHistoricalWeatherCurrent(location, current_date = new Date(), 
     if (end > new Date()) {
         end = new Date();
     }
-    return await getWeatherData(start, end, location, unitsType, unitString);
+    return await getWeatherData(start, end, location, unitsType);
 }
 
 
 async function getHistoricalWeather(location, current_date = new Date(), delta = DEFAULT_DELTA, start_year = "2001", end_year = "2030", unitsType = "metric") {
     // format location to two decimal places
-    var unitString = METRIC
-    if (unitsType === "imperial") {
-        unitString = IMPERIAL
-    }
 
     location = [location[0].toFixed(2), location[1].toFixed(2)];
     const datas = [];
@@ -883,7 +901,7 @@ async function getHistoricalWeather(location, current_date = new Date(), delta =
         current_date_to.setFullYear(i);
         const start = new Date(current_date_to.getTime() - delta * 24 * 60 * 60 * 1000);
         const end = new Date(current_date_to.getTime() + delta * 24 * 60 * 60 * 1000);        
-        await getWeatherData(start, end, location, unitsType, unitString).then((data) => {
+        await getWeatherData(start, end, location, unitsType).then((data) => {
             if (data && data["daily"] && data["daily"]["time"] && data["daily"]["time"].length > 0) {
                 datas.push(data);
             }
