@@ -95,14 +95,14 @@
             if (snowMm > 0) {
                 icon = "🌨️";
             } else if (precipMm > 0) {
-                icon = sunshinePct < 0.20 ? "🌧️" : "🌦️";
-            } else if (sunshinePct < 0.10) {
+                icon = sunshinePct < 20 ? "🌧️" : "🌦️";
+            } else if (sunshinePct < 10) {
                 icon = "☁️";
-            } else if (sunshinePct < 0.30) {
+            } else if (sunshinePct < 30) {
                 icon = "🌥️";
-            } else if (sunshinePct < 0.60) {
+            } else if (sunshinePct < 60) {
                 icon = "⛅";
-            } else if (sunshinePct < 0.85) {
+            } else if (sunshinePct < 85) {
                 icon = "🌤️";
             } else {
                 icon = "☀️";
@@ -279,7 +279,7 @@
                 }
 
                 // Sunshine first, then precipitation
-                const sunshineAndPrecip = `☀️ ${Math.round(sunshine * 100)}%` + (precipString ? '  ' + precipString : '');
+                const sunshineAndPrecip = `☀️ ${Math.round(sunshine)}%` + (precipString ? '  ' + precipString : '');
 
                 const isToday = new Date(date).toDateString() === new Date().toDateString();
                 const dateLabel = isToday ? 'Today' : formatDate(date);
@@ -422,7 +422,7 @@
             
             metricsHTML += `
                 <div class="metric-item">💨 ${Math.round(wind)}${FRIENDLY_NAMES["wind_speed_10m_max"][getDefaultUnit()+"_short"]}</div>
-                <div class="metric-item">☀️ ${Math.round(sunshine * 100)}%</div>
+                <div class="metric-item">☀️ ${Math.round(sunshine)}%</div>
             `;
             
             currentMetrics.innerHTML = metricsHTML;

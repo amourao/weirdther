@@ -4,7 +4,7 @@
 
 /* ========== CONFIGURATION ========== */
 var WEIRDTHER_CONFIG = {
-    DAILY_VARS: "weather_code,temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration,daylight_duration,relative_humidity_2m",
+    DAILY_VARS: "weather_code,temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration,daylight_duration",
     HOURLY_VARS: "temperature_2m,weather_code,relative_humidity_2m,precipitation_probability,rain,showers,snowfall,visibility,cloud_cover,wind_speed_10m,wind_gusts_10m",
     DEFAULT_DELTA: 5,
     HISTORICAL_YEARS: 26,
@@ -172,25 +172,6 @@ function filterHistoricalByDateWindow(values, dates, currentDate, delta, climate
     }
 
     return { dates: filteredDates, values: filteredValues };
-}
-
-
-/* ========== DAYLIGHT CALCULATION ========== */
-
-function calculateDayLength(latitude, dayOfYear) {
-    var declination = 23.44 * Math.sin((360 / 365) * (284 + dayOfYear) * Math.PI / 180);
-    var latRad = latitude * Math.PI / 180;
-    var decRad = declination * Math.PI / 180;
-    var cosHA = -Math.tan(latRad) * Math.tan(decRad);
-    if (cosHA > 1) return 0;    // Polar night
-    if (cosHA < -1) return 24;  // Polar day
-    var hourAngle = Math.acos(cosHA) * 180 / Math.PI;
-    return (2 / 15) * hourAngle;
-}
-
-function getDaylightHours(dateStr, latitude) {
-    var d = parseDate(dateStr);
-    return calculateDayLength(latitude, daysIntoYear(d));
 }
 
 /* ========== STATISTICAL FUNCTIONS ========== */
@@ -382,20 +363,11 @@ function computeVariableScore(varName, historicalValues, historicalDates, curren
     for (var i = 0; i < historicalValues.length; i++) {
         var val = historicalValues[i];
         if (val == null) continue;
-        if (varName === "sunshine_duration") {
-            var dlHours = getDaylightHours(historicalDates[i], latitude);
-            val = (dlHours > 0) ? val / (dlHours * 36) : 0;
-        }
         hist.push(val);
     }
     hist.sort(function(a, b) { return a - b; });
 
     var cmpVal = currentValue;
-    if (varName === "sunshine_duration") {
-        var dlHours = getDaylightHours(currentDate, latitude);
-        cmpVal = (dlHours > 0) ? currentValue / (dlHours * 36) : 0;
-    }
-
     if (hist.length === 0) {
         return { percentile: 0.5, score: 0, normalizedValue: cmpVal, firstIndex: -1, lastIndex: -1 };
     }
@@ -411,4 +383,38 @@ function computeVariableScore(varName, historicalValues, historicalDates, curren
         firstIndex: percentileData[1],
         lastIndex: percentileData[2]
     };
+}
+
+function weatherCodeToDescription(code) {
+    var mapping = {
+        0: "Clear sky",
+        1: "Mainly clear",
+        2: "Partly cloudy",
+        3: "Overcast",
+        45: "Fog",
+        48: "Depositing rime fog",
+        51: "Light drizzle",
+        53: "Moderate drizzle",
+        55: "Dense drizzle",
+        56: "Light freezing drizzle",
+        57: "Dense freezing drizzle",
+        61: "Slight rain",
+        63: "Moderate rain",
+        65: "Heavy rain",
+        66: "Light freezing rain",
+        67: "Heavy freezing rain",
+        71: "Slight snow fall",
+        73: "Moderate snow fall",
+        75: "Heavy snow fall",
+        77: "Snow grains",
+        80: "Slight rain showers",
+        81: "Moderate rain showers",
+        82: "Violent rain showers",
+        85: "Slight snow showers",
+        86: "Heavy snow showers",
+        95: "Thunderstorm",
+        96: "Thunderstorm with slight hail",
+        99: "Thunderstorm with heavy hail"
+    };
+    return mapping[code] || "Unknown";
 }

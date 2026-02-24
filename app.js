@@ -1,4 +1,4 @@
-const VARS_TO_GET_DAILY = "temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max,sunshine_duration";
+const VARS_TO_GET_DAILY = "weather_code,temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration,daylight_duration";
 const FRIENDLY_NAMES = {
     "temperature_2m_max": {
         "name": "Max Temp",
@@ -71,7 +71,6 @@ const FRIENDLY_NAMES = {
 
 const VARS_TO_GET_HOURLY = "";
 const METRIC="";
-const IMPERIAL="temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
 
 const DATA_PATH = "data";
 const SEPARATOR = "&nbsp;";
@@ -312,8 +311,6 @@ async function getWeather(){
     const urlParams = new URLSearchParams(window.location.search);
     const isApiCall = urlParams.get('json') == 'true';
 
-
-
     SELF_LINK = url;
 
     // today or yesterday
@@ -366,6 +363,9 @@ async function getWeather(){
     document.getElementById('loading').innerHTML = "";
 
     for (const varName of varsToGetDaily) {
+        if (!FRIENDLY_NAMES[varName]) {
+            continue;
+        }
         let chart = createAsciiChart(varName, gg[varName], currentVal[varName], date, latitude, historical_grouped[varName].slice());
         document.getElementById('chart').innerHTML += chart;
     }
@@ -374,10 +374,6 @@ async function getWeather(){
 
 
         response["results"][info[0]] = JSON.parse(JSON.stringify(current[info[1]]["daily"]));
-            for (var i = 0; i < response["results"][info[0]]["sunshine_duration"].length; i++) {
-                var correctionFactor = getDaylightHours(current[info[1]]["daily"]["time"][i], latitude) * 3600;
-                response["results"][info[0]]["sunshine_duration"][i] /= correctionFactor;
-            }
             response["results"][info[0]]["percentiles"] = {};
 
         if (current[info[1]]["daily"]["time"].length == 0) {
@@ -399,7 +395,8 @@ async function getWeather(){
         var text = ""
         for (const varName of varsToGetDaily) {
 
-            if (varName == "time") {
+            // not in Friendly names, skip
+            if (!FRIENDLY_NAMES[varName]) {
                 continue;
             }
             const datas = friendlyStats(historical_grouped[varName], historical_grouped["time"], current[info[1]]["daily"][varName], current[info[1]]["daily"]["time"], varName, units, delta, info[1], CLIMATE_NORMALS[climateNormalIndex], latitude);
@@ -515,9 +512,6 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     current_series_days = current_series_days.slice();
 
     var decimalPlaces = 1;
-    if (var_name === "sunshine_duration") {
-        decimalPlaces = 0;
-    }
 
     // today + 16 days
 
@@ -552,11 +546,6 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     );
     data_days = combined.map((e) => e[0]);
     data = combined.map((e) => e[1]);
-
-    if (var_name === "temperature_2m_max" && current_series_days[0] === "2026-02-14") {
-        console.log(`[${var_name}] Historical data range:`, data_days[0], "to", data_days[data_days.length - 1]);
-        console.log(`[${var_name}] Climate normal:`, climateNormal);
-    }
 
     var mean = getMean(data);
     var median = getMedian(data);
@@ -603,7 +592,7 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
     series_percentile[2] /= current_series.length;
 
     // Use normalized values for display if sunshine_duration
-    var displaySeriesValues = var_name === "sunshine_duration" ? normalizedSeriesValues : current_series;
+    var displaySeriesValues =  current_series;
     series_mean = getMean(displaySeriesValues);
     series_median = getMedian(displaySeriesValues);
     var displaySeriesMinMax = [Math.min(...displaySeriesValues), Math.max(...displaySeriesValues)];
@@ -614,17 +603,12 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
         series_min_max = displaySeriesMinMax[0].toFixed(decimalPlaces) + "/" + series_mean.toFixed(decimalPlaces) + "/" + displaySeriesMinMax[1].toFixed(decimalPlaces);
     }
 
-    // Build paired historical data+days, normalizing sunshine_duration and filtering nulls
+    // Build paired historical data+days and filtering nulls
     var gradientHistData = [];
     var gradientHistDays = [];
     for (var i = 0; i < data.length; i++) {
         if (data[i] == null || !data_days[i]) continue;
-        if (var_name === "sunshine_duration") {
-            var dlHours = getDaylightHours(data_days[i], latitude);
-            gradientHistData.push((dlHours > 0) ? data[i] / (dlHours * 36) : 0);
-        } else {
-            gradientHistData.push(data[i]);
-        }
+        gradientHistData.push(data[i]);
         gradientHistDays.push(data_days[i]);
     }
 
@@ -707,17 +691,6 @@ function printStats(data, current_value, var_name, current_date, latitude) {
     var p75 = getPercentile(data, 0.75);
     var p95 = getPercentile(data, 0.95);
     var percentile = findPercentileForValue(data, current_value);
-    if (var_name === "sunshine_duration") {
-        var correctionFactor = getDaylightHours(current_date, latitude) * 36;
-        mean = mean / correctionFactor;
-        median = median / correctionFactor;
-        std = std / correctionFactor;
-        p5 = p5 / correctionFactor;
-        p25 = p25 / correctionFactor;
-        p75 = p75 / correctionFactor;
-        p95 = p95 / correctionFactor;
-        current_value = current_value / correctionFactor;
-    }
     return `mean: ${mean.toFixed(2)}, std: ${std.toFixed(2)}, 5%: ${p5.toFixed(2)}, 25%: ${p25.toFixed(2)}, 50%: ${median.toFixed(2)}, 75%: ${p75.toFixed(2)}, 95%: ${p95.toFixed(2)}<br>current value: ${current_value.toFixed(2)}, percentile: ${percentile[0].toFixed(2)}`;
 }
 
@@ -730,10 +703,14 @@ async function getCurrentWeather(location = DEFAULT_LOCATION, unitsType = "metri
     const response = await fetch(url);
     const data = await response.json();
 
+    console.log("Current weather data:", data);
     if (unitsType === "imperial") {
         data["current"] = convertToImperial(data["current"]);
+        data["daily"] = convertToImperial(data["daily"]);
     }
-    
+    data["current"] = convertSunshineDuration(data["current"]);
+    data["daily"] = convertSunshineDuration(data["daily"]);    
+
     return data;
 }
 
@@ -741,8 +718,9 @@ function convertToImperial(data) {
     for (var varName in data) {
         if (varName === "temperature_2m" || varName === "apparent_temperature" || varName === "temperature_2m_max" || varName === "temperature_2m_min") {
             data[varName] = data[varName].map(x => x * 9/5 + 32);
-        } else if (varName === "wind_speed_10m" || varName === "wind_gusts_10m") {
-            data[varName] = data[varName].map(x => x * 2.237);
+        } else if (varName === "wind_speed_10m_max" || varName === "wind_gusts_10m_max") {
+            // km/h to mph
+            data[varName] = data[varName].map(x => x * 0.621371);
         } else if (varName === "rain_sum" ) { // mm
             data[varName] = data[varName].map(x => x * 0.0393701);
         } else if (varName === "snowfall_sum" ) { // cm
@@ -750,6 +728,13 @@ function convertToImperial(data) {
         } else {
             data[varName] = data[varName];
         }
+    }
+    return data;
+}
+
+function convertSunshineDuration(data) {
+    if (data["sunshine_duration"] && data["daylight_duration"]) {
+        data["sunshine_duration"] = data["sunshine_duration"].map((x, i) => x / data["daylight_duration"][i] * 100);
     }
     return data;
 }
@@ -848,15 +833,17 @@ async function getWeatherData(start, end, location, unitsType) {
             if (unitsType === "imperial") {
                 output["daily"] = convertToImperial(output["daily"]);
             }
+            output["daily"] = convertSunshineDuration(output["daily"]);
             i++;
             continue;
         }
         if (storedData) {
             var output_day = JSON.parse(storedData);
+            console.log("Loaded from cache for date: " + date.toISOString().split('T')[0]);
             if (unitsType === "imperial") { 
-                console.log("Converting to imperial units for day: " + output_day.daily.time[0]);
                 output_day["daily"] = convertToImperial(output_day["daily"]);
             }
+            output_day["daily"] = convertSunshineDuration(output_day["daily"]);
             for (var varName in output_day["daily"]) {
                 if (!output.daily[varName]) {
                     output.daily[varName] = [];
@@ -867,10 +854,6 @@ async function getWeatherData(start, end, location, unitsType) {
         }
         i++;
     }
-
-    // if today's key was fetched, removed stored key for today, to allow updating
-    const todayKey = cacheKey(new Date().toISOString().split('T')[0], location[0], location[1]);
-    localStorage.removeItem(todayKey);
     return output;
 }
 
@@ -981,10 +964,6 @@ function createHistogram(datas, latitude, current_date = null) {
             for (var k = 0; k < vars.length; k++) {
                 var varName = vars[k] + "";
                 var val = data["daily"][varName][j];
-                if (varName === "sunshine_duration") {
-                    var correctionFactor = getDaylightHours(day, latitude) * 36;
-                    val = val / correctionFactor;
-                }
                 val = Math.round(val) + "";
                 if (current_date && day == current_date.toISOString().slice(0, 10)) {
                     if (!(varName in currentData)) {
@@ -1262,4 +1241,3 @@ function generateOnceEveryXDays(percentile, climateNormal) {
     return `, should happen once every ${days} days`;    
 }
 
-// calculateDayLength and getDaylightHours are provided by weirdther-core.js
