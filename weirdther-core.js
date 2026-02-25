@@ -24,6 +24,77 @@ var WEIRDTHER_CONFIG = {
     METRIC_UNIT_STRING: "",
 };
 
+/* ========== VARIABLE METADATA ========== */
+
+var FRIENDLY_NAMES = {
+    "temperature_2m_max": {
+        "name": "Max Temp",
+        "lower": "colder",
+        "higher": "warmer",
+        "metric": "&#186;C",
+        "imperial": " F",
+        "metric_short": "&#186;C",
+        "imperial_short": " F",
+        "colors": ["blue", "white", "red"],
+        "color_limits": [0, 50, 100],
+    },
+    "temperature_2m_min": {
+        "name": "Min Temp",
+        "lower": "colder",
+        "higher": "warmer",
+        "metric": "&#186;C",
+        "imperial": " F",
+        "metric_short": "&#186;C",
+        "imperial_short": " F",
+        "colors": ["blue", "white", "red"],
+        "color_limits": [0, 50, 100]
+    },
+    "rain_sum": {
+        "name": "Rain",
+        "lower": "drier",
+        "higher": "rainier",
+        "metric": " mm",
+        "imperial": " inch",
+        "metric_short": " mm",
+        "imperial_short": " inch",
+        "colors": ["white", "#DDDDff", "blue"],
+        "color_limits": [0, 80, 99]
+    },
+    "snowfall_sum": {
+        "name": "Snow",
+        "lower": "less snowy",
+        "higher": "snowier",
+        "metric": " mm",
+        "imperial": " inch",
+        "metric_short": " mm",
+        "imperial_short": " inch",
+        "colors": ["white", "blue"],
+        "color_limits": [0, 99]
+    },
+    "wind_speed_10m_max": {
+        "name": "Wind",
+        "lower": "calmer",
+        "higher": "windier",
+        "metric": " km/h",
+        "imperial": " mph",
+        "metric_short": " km/h",
+        "imperial_short": " mph",
+        "colors": ["white", "#DDDDff", "blue", "lightgreen", "red"],
+        "color_limits": [0, 25, 50, 75, 100],
+    },
+    "sunshine_duration": {
+        "name": "Sunshine",
+        "lower": "less sunny",
+        "higher": "sunnier",
+        "metric": "% of daylight hours",
+        "imperial": " % of daylight hours",
+        "metric_short": "%",
+        "imperial_short": "%",
+        "colors": ["gray", "yellow"],
+        "color_limits": [0, 68]
+    },
+};
+
 /* ========== UTILITY FUNCTIONS ========== */
 
 function cacheKey(dateStr, lat, lon) {
@@ -417,4 +488,79 @@ function weatherCodeToDescription(code) {
         99: "Thunderstorm with heavy hail"
     };
     return mapping[code] || "Unknown";
+}
+
+/* ========== HTTP ========== */
+
+function httpGet(url, callback) {
+    var xhr = new XMLHttpRequest();
+    var done = false;
+    xhr.open("GET", url, true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && !done) {
+            done = true;
+            if (xhr.status === 200) {
+                var parsed;
+                try { parsed = JSON.parse(xhr.responseText); }
+                catch (e) { callback("JSON parse error", null); return; }
+                callback(null, parsed);
+            } else {
+                callback("HTTP error " + xhr.status, null);
+            }
+        }
+    };
+    xhr.send(null);
+}
+
+function geocode(location, callback) {
+    var url = "https://geocoding-api.open-meteo.com/v1/search?name=" +
+              encodeURIComponent(location) + "&count=10&format=json";
+    httpGet(url, function(err, data) {
+        if (err || !data || !data.results || data.results.length === 0) {
+            callback("Location not found"); return;
+        }
+        var r = data.results[0];
+        var name = r.name;
+        if (r.admin1) name += ", " + r.admin1;
+        if (r.country) name += ", " + r.country;
+        callback(null, parseFloat(r.latitude).toFixed(2), parseFloat(r.longitude).toFixed(2), name);
+    });
+}
+
+/* ========== UNIT CONVERSION ========== */
+
+function convertToImperial(data) {
+    for (var varName in data) {
+        if (!data.hasOwnProperty(varName)) continue;
+        if (!Array.isArray(data[varName])) continue;
+        if (varName === "temperature_2m_max" || varName === "temperature_2m_min" ||
+            varName === "temperature_2m" || varName === "apparent_temperature") {
+            for (var i = 0; i < data[varName].length; i++) {
+                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 9/5 + 32;
+            }
+        } else if (varName === "wind_speed_10m_max" || varName === "wind_gusts_10m_max") {
+            for (var i = 0; i < data[varName].length; i++) {
+                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 0.621371;
+            }
+        } else if (varName === "rain_sum") {
+            for (var i = 0; i < data[varName].length; i++) {
+                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 0.0393701;
+            }
+        } else if (varName === "snowfall_sum") {
+            for (var i = 0; i < data[varName].length; i++) {
+                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 0.393701;
+            }
+        }
+    }
+    return data;
+}
+
+function convertSunshineToPct(data) {
+    if (!data || !Array.isArray(data["sunshine_duration"]) || !Array.isArray(data["daylight_duration"])) return data;
+    for (var i = 0; i < data["sunshine_duration"].length; i++) {
+        if (data["sunshine_duration"][i] != null) {
+            data["sunshine_duration"][i] = data["sunshine_duration"][i] / (data["daylight_duration"][i] || 1) * 100;
+        }
+    }
+    return data;
 }

@@ -66,14 +66,28 @@ var DEFAULT_DELTA = 5;
 var NUM_FORECAST_DAYS = 6;
 var HISTORICAL_YEARS = 26;
 var SCORE_VARS = WEIRDTHER_CONFIG.SCORE_VARS;
-var FRIENDLY = {
-    "temperature_2m_max": {name: "Max", lower: "colder", higher: "warmer", metric: "&deg;C", imperial: "&deg;F"},
-    "temperature_2m_min": {name: "Min", lower: "colder", higher: "warmer", metric: "&deg;C", imperial: "&deg;F"},
-    "rain_sum": {name: "Rain", lower: "drier", higher: "rainier", metric: "mm", imperial: "in"},
-    "snowfall_sum": {name: "Snow", lower: "less snowy", higher: "snowier", metric: "mm", imperial: "in"},
-    "wind_speed_10m_max": {name: "Wind", lower: "calmer", higher: "windier", metric: "km/h", imperial: "mph"},
-    "sunshine_duration": {name: "Sun", lower: "less sunny", higher: "sunnier", metric: "%", imperial: "%"}
+/* FRIENDLY is derived from FRIENDLY_NAMES (weirdther-core.js). Overrides
+   use shorter names and &deg; entities for e-ink legibility. */
+var FRIENDLY_OVERRIDES = {
+    "temperature_2m_max": {name: "Max", metric: "&deg;C", imperial: "&deg;F"},
+    "temperature_2m_min": {name: "Min", metric: "&deg;C", imperial: "&deg;F"},
+    "rain_sum":           {metric: "mm", imperial: "in"},
+    "snowfall_sum":       {metric: "mm", imperial: "in"},
+    "wind_speed_10m_max": {metric: "km/h", imperial: "mph"},
+    "sunshine_duration":  {name: "Sun", metric: "%", imperial: "%"}
 };
+var FRIENDLY = {};
+for (var _vn in FRIENDLY_NAMES) {
+    if (!FRIENDLY_NAMES.hasOwnProperty(_vn)) continue;
+    var _ov = FRIENDLY_OVERRIDES[_vn] || {};
+    FRIENDLY[_vn] = {
+        name:     _ov.name     !== undefined ? _ov.name     : FRIENDLY_NAMES[_vn].name,
+        lower:    FRIENDLY_NAMES[_vn].lower,
+        higher:   FRIENDLY_NAMES[_vn].higher,
+        metric:   _ov.metric   !== undefined ? _ov.metric   : FRIENDLY_NAMES[_vn].metric_short,
+        imperial: _ov.imperial !== undefined ? _ov.imperial : FRIENDLY_NAMES[_vn].imperial_short
+    };
+}
 
 var VAR_ICONS = {
     "temperature_2m_max": "&#9650;",
@@ -164,89 +178,8 @@ function formatDateShort(dateStr) {
     return days[d.getDay()] + " " + d.getDate() + " " + months[d.getMonth()];
 }
 
-/* ========== UNIT CONVERSION ========== */
-
-function convertToImperial(data) {
-    for (var varName in data) {
-        if (!data.hasOwnProperty(varName)) continue;
-        if (!Array.isArray(data[varName])) continue;
-        if (varName === "temperature_2m_max" || varName === "temperature_2m_min") {
-            for (var i = 0; i < data[varName].length; i++) {
-                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 9/5 + 32;
-            }
-        } else if (varName === "wind_speed_10m_max" || varName === "wind_gusts_10m_max") {
-            for (var i = 0; i < data[varName].length; i++) {
-                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 2.237;
-            }
-        } else if (varName === "rain_sum") {
-            for (var i = 0; i < data[varName].length; i++) {
-                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 0.0393701;
-            }
-        } else if (varName === "snowfall_sum") {
-            for (var i = 0; i < data[varName].length; i++) {
-                if (data[varName][i] != null) data[varName][i] = data[varName][i] * 0.393701;
-            }
-        }
-    }
-    return data;
-}
-
-
-function convertSunshineToPct(data) {
-    for (var varName in data) {
-        if (!data.hasOwnProperty(varName)) continue;
-        if (!Array.isArray(data[varName])) continue;
-        if (varName === "sunshine_duration") {
-            for (var i = 0; i < data[varName].length; i++) {
-                if (data[varName][i] != null) data[varName][i] = data["sunshine_duration"][i] / (data["daylight_duration"][i] || 1) * 100;
-            }
-        }
-    }
-    return data;
-}
-/* ========== HTTP ========== */
-
-function httpGet(url, callback) {
-    var xhr = new XMLHttpRequest();
-    var done = false;
-    xhr.open("GET", url, true);
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4 && !done) {
-            done = true;
-            if (xhr.status === 200) {
-                var parsed;
-                try {
-                    parsed = JSON.parse(xhr.responseText);
-                } catch (e) {
-                    callback("JSON parse error", null);
-                    return;
-                }
-                callback(null, parsed);
-            } else {
-                callback("HTTP error " + xhr.status, null);
-            }
-        }
-    };
-    xhr.send(null);
-}
 
 /* ========== API ========== */
-
-function geocode(location, callback) {
-    var url = "https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(location) + "&count=10&format=json";
-    httpGet(url, function(err, data) {
-        if (err || !data || !data.results || data.results.length === 0) {
-            callback("Location not found");
-            return;
-        }
-        var r = data.results[0];
-        var name = r.name;
-        if (r.admin1) name += ", " + r.admin1;
-        if (r.country) name += ", " + r.country;
-        callback(null, parseFloat(r.latitude).toFixed(2), parseFloat(r.longitude).toFixed(2), name);
-    });
-}
-
 
 function fetchForecast(lat, lon, units, callback) {
     var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&past_days=1&latitude=" + lat + "&longitude=" + lon + "&daily=" + WEIRDTHER_CONFIG.DAILY_VARS + ",weather_code";

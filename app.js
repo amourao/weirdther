@@ -1,73 +1,3 @@
-const VARS_TO_GET_DAILY = "weather_code,temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration,daylight_duration";
-const FRIENDLY_NAMES = {
-    "temperature_2m_max": {
-        "name": "Max Temp",
-        "lower": "colder",
-        "higher": "warmer",
-        "metric": "&#186;C",
-        "imperial": " F",
-        "metric_short": "&#186;C",
-        "imperial_short": " F",
-        "colors": ["blue", "white", "red"],
-        "color_limits": [0, 50, 100],
-    },
-    "temperature_2m_min": {
-        "name": "Min Temp",
-        "lower": "colder",
-        "higher": "warmer",
-        "metric": "&#186;C",
-        "imperial": " F",
-        "metric_short": "&#186;C",
-        "imperial_short": " F",
-        "colors": ["blue", "white", "red"],
-        "color_limits": [0, 50, 100]
-    },
-    "rain_sum": {
-        "name": "Rain",
-        "lower": "drier",
-        "higher": "rainier",
-        "metric": " mm",
-        "imperial": " inch",
-        "metric_short": " mm",
-        "imperial_short": " inch",
-        "colors": ["white", "#DDDDff", "blue"],
-        "color_limits": [0, 80, 99]
-    },
-    "snowfall_sum": {
-        "name": "Snow",
-        "lower": "less snowy",
-        "higher": "snowier",
-        "metric": " mm",
-        "imperial": " inch",
-        "metric_short": " mm",
-        "imperial_short": " inch",
-        "colors": ["white", "blue"],
-        "color_limits": [0, 99]
-
-    },
-    "wind_speed_10m_max": {
-        "name": "Wind",
-        "lower": "calmer",
-        "higher": "windier",
-        "metric": " km/h",
-        "imperial": " mph",
-        "metric_short": " km/h",
-        "imperial_short": " mph",
-        "colors": ["white", "#DDDDff",  "blue", "lightgreen", "red"],
-        "color_limits": [0, 25, 50, 75, 100],
-    }, 
-    "sunshine_duration": {
-        "name": "Sunshine",
-        "lower": "less sunny",
-        "higher": "sunnier",
-        "metric": "% of daylight hours",
-        "imperial": " % of daylight hours",
-        "metric_short": "%",
-        "imperial_short": "%",
-        "colors": ["gray", "yellow"],
-        "color_limits": [0, 68]
-    },
-}
 
 const VARS_TO_GET_HOURLY = "";
 const METRIC="";
@@ -355,7 +285,7 @@ async function getWeather(){
         current_histograms.push(...createHistogram([current[i]], latitude));
     }
     const gg = groupHistogramsByValue(current_histograms);
-    const varsToGetDaily = VARS_TO_GET_DAILY.split(",");
+    const varsToGetDaily = WEIRDTHER_CONFIG.DAILY_VARS.split(",");
     
     let currentVal = getCurrentValue(current, date);
     document.getElementById('chart').innerHTML = "";
@@ -698,7 +628,7 @@ async function getCurrentWeather(location = DEFAULT_LOCATION, unitsType = "metri
     // format location to three decimal places
 
     location = [location[0].toFixed(2), location[1].toFixed(2)];
-    const url = `https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=${location[0]}&longitude=${location[1]}&current=${VARS_TO_GET_HOURLY}&daily=${VARS_TO_GET_DAILY},weather_code`;
+    const url = `https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=${location[0]}&longitude=${location[1]}&current=${VARS_TO_GET_HOURLY}&daily=${WEIRDTHER_CONFIG.DAILY_VARS},weather_code`;
     console.log("Fetching current weather from: " + url);
     const response = await fetch(url);
     const data = await response.json();
@@ -708,40 +638,15 @@ async function getCurrentWeather(location = DEFAULT_LOCATION, unitsType = "metri
         data["current"] = convertToImperial(data["current"]);
         data["daily"] = convertToImperial(data["daily"]);
     }
-    data["current"] = convertSunshineDuration(data["current"]);
-    data["daily"] = convertSunshineDuration(data["daily"]);    
+    convertSunshineToPct(data["current"]);
+    convertSunshineToPct(data["daily"]);
 
-    return data;
-}
-
-function convertToImperial(data) {
-    for (var varName in data) {
-        if (varName === "temperature_2m" || varName === "apparent_temperature" || varName === "temperature_2m_max" || varName === "temperature_2m_min") {
-            data[varName] = data[varName].map(x => x * 9/5 + 32);
-        } else if (varName === "wind_speed_10m_max" || varName === "wind_gusts_10m_max") {
-            // km/h to mph
-            data[varName] = data[varName].map(x => x * 0.621371);
-        } else if (varName === "rain_sum" ) { // mm
-            data[varName] = data[varName].map(x => x * 0.0393701);
-        } else if (varName === "snowfall_sum" ) { // cm
-            data[varName] = data[varName].map(x => x * 0.393701);
-        } else {
-            data[varName] = data[varName];
-        }
-    }
-    return data;
-}
-
-function convertSunshineDuration(data) {
-    if (data["sunshine_duration"] && data["daylight_duration"]) {
-        data["sunshine_duration"] = data["sunshine_duration"].map((x, i) => x / data["daylight_duration"][i] * 100);
-    }
     return data;
 }
 
 function splitPastPresentFuture(data, current_date, delta = DEFAULT_DELTA) {
     var daily = [{"daily": {}}, {"daily": {}}, {"daily": {}}];
-    var vars = ("time," + VARS_TO_GET_DAILY).split(",");
+    var vars = ("time," + WEIRDTHER_CONFIG.DAILY_VARS).split(",");
     if (data["daily"]["weather_code"]) {
         vars.push("weather_code");
     }
@@ -799,7 +704,7 @@ async function getWeatherData(start, end, location, unitsType) {
         // remove from missingDays
         missingDays = missingDays.filter(day => day < internalStart || day > internalEnd);
 
-        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${location[0]}&longitude=${location[1]}&start_date=${internalStart.toISOString().split('T')[0]}&end_date=${internalEnd.toISOString().split('T')[0]}&daily=${VARS_TO_GET_DAILY}`;
+        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${location[0]}&longitude=${location[1]}&start_date=${internalStart.toISOString().split('T')[0]}&end_date=${internalEnd.toISOString().split('T')[0]}&daily=${WEIRDTHER_CONFIG.DAILY_VARS}`;
         console.log("Fetching missing days from: " + url);
         const response = await fetch(url);
         const data = await response.json();
@@ -833,7 +738,7 @@ async function getWeatherData(start, end, location, unitsType) {
             if (unitsType === "imperial") {
                 output["daily"] = convertToImperial(output["daily"]);
             }
-            output["daily"] = convertSunshineDuration(output["daily"]);
+            output["daily"] = convertSunshineToPct(output["daily"]);
             i++;
             continue;
         }
@@ -843,7 +748,7 @@ async function getWeatherData(start, end, location, unitsType) {
             if (unitsType === "imperial") { 
                 output_day["daily"] = convertToImperial(output_day["daily"]);
             }
-            output_day["daily"] = convertSunshineDuration(output_day["daily"]);
+            output_day["daily"] = convertSunshineToPct(output_day["daily"]);
             for (var varName in output_day["daily"]) {
                 if (!output.daily[varName]) {
                     output.daily[varName] = [];
@@ -903,7 +808,7 @@ function mergeCurrentHistorical(current, historical, start, end) {
     if (historical["daily"] != null) {
         for (var j = 0; j < historical["daily"]["time"].length; j++) {
             var day = historical["daily"]["time"][j];
-            var vars = VARS_TO_GET_DAILY.split(",");
+            var vars = WEIRDTHER_CONFIG.DAILY_VARS.split(",");
             var offset = perValue["time"].indexOf(day);
             if (offset === -1) {
                 perValue["time"].push(day);
@@ -960,7 +865,7 @@ function createHistogram(datas, latitude, current_date = null) {
         var data = datas[i];
         for (var j = 0; j < data["daily"]["time"].length; j++) {
             var day = data["daily"]["time"][j];
-            var vars = VARS_TO_GET_DAILY.split(",");
+            var vars = WEIRDTHER_CONFIG.DAILY_VARS.split(",");
             for (var k = 0; k < vars.length; k++) {
                 var varName = vars[k] + "";
                 var val = data["daily"][varName][j];
@@ -1120,8 +1025,8 @@ function getCurrentValue(current, currentDate) {
     for (var i = 0; i < current.length; i++) {
         var index = current[i]["daily"]["time"].indexOf(currentDate.toISOString().slice(0, 10))
         if (index !== -1) {
-            for (var varName in VARS_TO_GET_DAILY.split(",")) {
-                varName = VARS_TO_GET_DAILY.split(",")[varName];
+            for (var varName in WEIRDTHER_CONFIG.DAILY_VARS.split(",")) {
+                varName = WEIRDTHER_CONFIG.DAILY_VARS.split(",")[varName];
                 currentVal[varName] = current[i]["daily"][varName][index];
             }
         }
