@@ -261,7 +261,7 @@ async function getWeather(){
         const currentA = await getCurrentWeather([latitude, longitude], units);
         const currentB = await getHistoricalWeatherCurrent([latitude, longitude], date, delta, units);
 
-        current = mergeCurrentHistorical(currentA, currentB, delta_starts.toISOString().slice(0, 10), delta_ends.toISOString().slice(0, 10));
+        current = mergeForecastHistorical(currentA, currentB);
     } else {
         current = await getHistoricalWeatherCurrent([latitude, longitude], date, delta, units);
     }
@@ -278,7 +278,7 @@ async function getWeather(){
     console.log(`Historical data: center=${date.toISOString().split('T')[0]}, widerDelta=${widerDelta} (covers ${delta_starts.toISOString().split('T')[0]} to ${delta_ends.toISOString().split('T')[0]})`);
 
     const historical = await getHistoricalWeather([latitude, longitude], date, widerDelta, start_year, end_year, units, true);
-    const historical_grouped = groupByValue(historical);
+    const historical_grouped = groupAllHistorical(historical);
     const historical_histogram = createHistogram(historical, latitude);
     const current_histograms = [...historical_histogram];
     for (var i = 0; i < current.length; i++) {
@@ -628,7 +628,7 @@ async function getCurrentWeather(location = DEFAULT_LOCATION, unitsType = "metri
     // format location to three decimal places
 
     location = [location[0].toFixed(2), location[1].toFixed(2)];
-    const url = `https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=${location[0]}&longitude=${location[1]}&current=${VARS_TO_GET_HOURLY}&daily=${WEIRDTHER_CONFIG.DAILY_VARS},weather_code`;
+    const url = `https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=${location[0]}&longitude=${location[1]}&current=${VARS_TO_GET_HOURLY}&daily=${WEIRDTHER_CONFIG.DAILY_VARS},weather_code&timezone=auto`;
     console.log("Fetching current weather from: " + url);
     const response = await fetch(url);
     const data = await response.json();
@@ -674,185 +674,41 @@ function splitPastPresentFuture(data, current_date, delta = DEFAULT_DELTA) {
     return daily;
 }
 
-async function getWeatherData(start, end, location, unitsType) {
-    var output = {};
-    var i = 0;
-    var missingDays = [];
-    // if end > today, set end to today
-    if (end > new Date()) {
-        end = new Date();
-    }
-    for (var date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
-        const key = cacheKey(date.toISOString().split('T')[0], location[0], location[1]);
-        const storedData = localStorage.getItem(key);
-        if (!storedData) {
-            missingDays.push(new Date(date));
-        }
-        i++;
-    }
-    // while missingDays are consecutive, fetch them in one go
-    while (missingDays.length > 0) {
-        var internalStart = missingDays[0];
-        var internalEnd = missingDays[0];
-        for (var i = 1; i < missingDays.length; i++) {
-            if (missingDays[i].getTime() === internalEnd.getTime() + 24 * 60 * 60 * 1000) {
-                internalEnd = missingDays[i];
-            } else {
-                break;
-            }
-        }
-        // remove from missingDays
-        missingDays = missingDays.filter(day => day < internalStart || day > internalEnd);
-
-        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${location[0]}&longitude=${location[1]}&start_date=${internalStart.toISOString().split('T')[0]}&end_date=${internalEnd.toISOString().split('T')[0]}&daily=${WEIRDTHER_CONFIG.DAILY_VARS}`;
-        console.log("Fetching missing days from: " + url);
-        const response = await fetch(url);
-        const data = await response.json();
-        // iterate per day between start and end, if not in data, add null
-        if (!data || !data.daily || !data.daily.time) {
-            return {}
-        }
-
-        for (let i = 0; i < data.daily.time.length; i++) {
-            var day = data.daily.time[i];
-            const key = cacheKey(day, location[0], location[1]);
-            // build a copy of the data object, but only for this day
-            var dayData = JSON.parse(JSON.stringify(data));
-            dayData.daily = {};
-            for (var varName in data.daily) {
-                dayData.daily[varName] = [data.daily[varName][i]];
-            }
-            localStorage.setItem(key, JSON.stringify(dayData));
-        }
-    }
-
-    var output = {};
-    var i = 0;
-    var missingDays = [];
-    for (var date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
-        const key = cacheKey(date.toISOString().split('T')[0], location[0], location[1]);
-        const storedData = localStorage.getItem(key);
-
-        if (!output.daily) {
-            output = JSON.parse(storedData);
-            if (unitsType === "imperial") {
-                output["daily"] = convertToImperial(output["daily"]);
-            }
-            output["daily"] = convertSunshineToPct(output["daily"]);
-            i++;
-            continue;
-        }
-        if (storedData) {
-            var output_day = JSON.parse(storedData);
-            console.log("Loaded from cache for date: " + date.toISOString().split('T')[0]);
-            if (unitsType === "imperial") { 
-                output_day["daily"] = convertToImperial(output_day["daily"]);
-            }
-            output_day["daily"] = convertSunshineToPct(output_day["daily"]);
-            for (var varName in output_day["daily"]) {
-                if (!output.daily[varName]) {
-                    output.daily[varName] = [];
-                }
-                // append arrays
-                output.daily[varName].push(...output_day["daily"][varName]);
-            }
-        }
-        i++;
-    }
-    return output;
-}
+// Thin async wrappers around the shared callback-based functions in weirdther-core.js
 
 async function getHistoricalWeatherCurrent(location, current_date = new Date(), delta = DEFAULT_DELTA, unitsType = "metric") {
     location = [location[0].toFixed(2), location[1].toFixed(2)];
-
-    const start = new Date(current_date.getTime() - delta * 24 * 60 * 60 * 1000);
-    let end = new Date(current_date.getTime() + delta * 24 * 60 * 60 * 1000);
-    if (end > new Date()) {
-        end = new Date();
-    }
-    return await getWeatherData(start, end, location, unitsType);
+    var start = toISODate(new Date(current_date.getTime() - delta * 86400000));
+    var end   = toISODate(new Date(current_date.getTime() + delta * 86400000));
+    return new Promise(function(resolve) {
+        fetchHistoricalRange(location[0], location[1], start, end, function(err, data) {
+            if (err || !data) { resolve(null); return; }
+            if (unitsType === "imperial") convertToImperial(data.daily);
+            convertSunshineToPct(data.daily);
+            resolve(data);
+        });
+    });
 }
-
 
 async function getHistoricalWeather(location, current_date = new Date(), delta = DEFAULT_DELTA, start_year = "2001", end_year = "2030", unitsType = "metric") {
-    // format location to two decimal places
-
     location = [location[0].toFixed(2), location[1].toFixed(2)];
-    const datas = [];
-    var current_date_to = new Date(current_date);
-    if (end_year > new Date().getFullYear()) {
-        end_year = new Date().getFullYear();
-    }
-    const total_years = end_year - start_year;
-    for (let i = start_year; i < end_year; i++) {
-        document.getElementById("loading").innerHTML = `Loading weather data... (${(((i - start_year + 1)/total_years)*100).toFixed(0)}%)`;
-        current_date_to.setFullYear(i);
-        const start = new Date(current_date_to.getTime() - delta * 24 * 60 * 60 * 1000);
-        const end = new Date(current_date_to.getTime() + delta * 24 * 60 * 60 * 1000);        
-        await getWeatherData(start, end, location, unitsType).then((data) => {
-            if (data && data["daily"] && data["daily"]["time"] && data["daily"]["time"].length > 0) {
-                datas.push(data);
-            }
-        });
-    }
-    return datas;
-}
-
-function mergeCurrentHistorical(current, historical, start, end) {
-    // merge current and historical data, without adding duplicates, and only for the given start and end dates
-    // start with current data
-    // add missing values from historical data
-    
-
-    perValue = current["daily"]
-    if (historical["daily"] != null) {
-        for (var j = 0; j < historical["daily"]["time"].length; j++) {
-            var day = historical["daily"]["time"][j];
-            var vars = WEIRDTHER_CONFIG.DAILY_VARS.split(",");
-            var offset = perValue["time"].indexOf(day);
-            if (offset === -1) {
-                perValue["time"].push(day);
-            }
-            for (var k = 0; k < vars.length; k++) {
-                var varName = vars[k] + "";
-                var val = historical["daily"][varName][j];
-                if (offset === -1) {
-                    perValue[varName].push(val);
-                } else if (val !== null) {
-                    perValue[varName][offset] = val;
+    return new Promise(function(resolve, reject) {
+        fetchAllHistorical(location[0], location[1], current_date, delta, start_year, end_year,
+            function(done, total) {
+                document.getElementById("loading").innerHTML =
+                    "Loading weather data... (" + (((done + 1) / total) * 100).toFixed(0) + "%)";
+            },
+            function(err, results) {
+                if (err) return reject(err);
+                if (unitsType === "imperial") {
+                    for (var i = 0; i < results.length; i++) convertToImperial(results[i].daily);
                 }
+                for (var i = 0; i < results.length; i++) convertSunshineToPct(results[i].daily);
+                resolve(results);
             }
-        }
-    }
-    // remove values outside of start and end
-    merged = {};
-    for (var varName in perValue) {
-        merged[varName] = [];
-        for (var i = 0; i < perValue[varName].length; i++) {
-            if (current["daily"]["time"][i] >= start && current["daily"]["time"][i] <= end) {
-                merged[varName].push(perValue[varName][i]);
-            }
-        }
-    }
-
-    // sort all lists by the order of time
-    var combined = merged["time"].map((e, i) => {
-        var obj = {};
-        for (var varName in merged) {
-            obj[varName] = merged[varName][i];
-        }
-        return obj;
+        );
     });
-    combined.sort((a, b) => (a["time"] > b["time"]) ? 1 : ((b["time"] > a["time"]) ? -1 : 0));
-    for (var varName in merged) {
-        merged[varName] = combined.map((e) => e[varName]);
-    }
-
-    return {"daily": merged};
 }
-
-// groupByValue is the same as groupAllHistorical from weirdther-core.js
-var groupByValue = groupAllHistorical;
 
 
 function createHistogram(datas, latitude, current_date = null) {

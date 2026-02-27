@@ -504,6 +504,8 @@ function httpGet(url, callback) {
                 try { parsed = JSON.parse(xhr.responseText); }
                 catch (e) { callback("JSON parse error", null); return; }
                 callback(null, parsed);
+            } else if (xhr.status === 429) {
+                callback("Rate limit exceeded (429 Too Many Requests)", null);
             } else {
                 callback("HTTP error " + xhr.status, null);
             }
@@ -563,4 +565,192 @@ function convertSunshineToPct(data) {
         }
     }
     return data;
+}
+
+/* ========== CACHE HELPERS ========== */
+
+var useCache = (function() {
+    try {
+        var t = "__wh_test__";
+        localStorage.setItem(t, t);
+        localStorage.removeItem(t);
+        return true;
+    } catch (e) {
+        return false;
+    }
+})();
+
+function clearTodayCache(lat, lon) {
+    if (!useCache) return;
+    try { localStorage.removeItem(cacheKey(toISODate(new Date()), lat, lon)); } catch (e) {}
+}
+
+/* ========== DATA FETCHING ========== */
+
+function fetchForecast(lat, lon, callback) {
+    var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&past_days=1&latitude=" + lat +
+              "&longitude=" + lon + "&daily=" + WEIRDTHER_CONFIG.DAILY_VARS + ",weather_code&timezone=auto";
+    httpGet(url, callback);
+}
+
+function fetchHistoricalRange(lat, lon, startDate, endDate, callback) {
+    var start = new Date(startDate);
+    var end = new Date(endDate);
+    var now = new Date();
+    var today = toISODate(now);
+
+    if (toISODate(end) > today) end = now;
+    if (toISODate(start) > today) { callback(null, null); return; }
+    if (start > end) { callback(null, null); return; }
+
+    var url = "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat + "&longitude=" + lon +
+              "&start_date=" + toISODate(start) + "&end_date=" + toISODate(end) +
+              "&daily=" + WEIRDTHER_CONFIG.DAILY_VARS + "&timezone=auto";
+    httpGet(url, callback);
+}
+
+function fetchHistoricalYear(lat, lon, date, delta, year, callback) {
+    var varList = WEIRDTHER_CONFIG.DAILY_VARS.split(",");
+    var target = new Date(date.getTime());
+    target.setFullYear(year);
+    var startDate = new Date(target.getTime() - delta * 86400000);
+    var endDate = new Date(target.getTime() + delta * 86400000);
+    var now = new Date();
+    if (startDate > now) { callback(null, null); return; }
+    if (endDate > now) endDate = new Date(now.getTime() - 86400000);
+
+    /* Check cache for each day in this range */
+    if (useCache) {
+        var allCached = true;
+        var cachedData = {daily: {}};
+        for (var k = 0; k < varList.length; k++) cachedData.daily[varList[k]] = [];
+        cachedData.daily.time = [];
+
+        for (var d = new Date(startDate.getTime()); d <= endDate; d.setDate(d.getDate() + 1)) {
+            var key = cacheKey(toISODate(d), lat, lon);
+            try {
+                var cached = localStorage.getItem(key);
+                if (cached) {
+                    var dayData = JSON.parse(cached);
+                    if (dayData && dayData.daily && dayData.daily.time && dayData.daily.time.length > 0) {
+                        cachedData.daily.time.push(dayData.daily.time[0]);
+                        for (var v = 0; v < varList.length; v++) {
+                            cachedData.daily[varList[v]].push(dayData.daily[varList[v]][0]);
+                        }
+                        continue;
+                    }
+                }
+            } catch (e) {}
+            allCached = false;
+            break;
+        }
+
+        if (allCached && cachedData.daily.time.length > 0) {
+            callback(null, cachedData);
+            return;
+        }
+    }
+
+    /* Fetch from API */
+    var url = "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat + "&longitude=" + lon +
+        "&start_date=" + toISODate(startDate) + "&end_date=" + toISODate(endDate) +
+        "&daily=" + WEIRDTHER_CONFIG.DAILY_VARS;
+    httpGet(url, function(err, data) {
+        if (err || !data) { callback(err, null); return; }
+
+        /* Cache individual days */
+        if (useCache && data.daily && data.daily.time) {
+            try {
+                for (var i = 0; i < data.daily.time.length; i++) {
+                    var day = data.daily.time[i];
+                    var key = cacheKey(day, lat, lon);
+                    var dayData = JSON.parse(JSON.stringify(data));
+                    dayData.daily = {};
+                    for (var varName in data.daily) {
+                        dayData.daily[varName] = [data.daily[varName][i]];
+                    }
+                    localStorage.setItem(key, JSON.stringify(dayData));
+                }
+                clearTodayCache(lat, lon);
+            } catch (e) {}
+        }
+
+        callback(null, data);
+    });
+}
+
+/**
+ * Fetches historical data for all years in [startYear, endYear).
+ * Calls callback(null, results) where results is a raw array of per-year data objects.
+ * Callers should invoke groupAllHistorical(results) to get the flat grouped form.
+ */
+function fetchAllHistorical(lat, lon, date, delta, startYear, endYear, onProgress, callback) {
+    var results = [];
+    var total = endYear - startYear;
+
+    function next(year) {
+        if (year >= endYear) { callback(null, results); return; }
+        onProgress(year - startYear, total);
+        fetchHistoricalYear(lat, lon, date, delta, year, function(err, data) {
+            if (err) { callback(err, null); return; }
+            if (data && data.daily && data.daily.time && data.daily.time.length > 0) {
+                results.push(data);
+            }
+            next(year + 1);
+        });
+    }
+    next(startYear);
+}
+
+/**
+ * Merges forecast and historical data, preferring historical values when available.
+ * Returns merged {daily: {time: [], ...}} object sorted by date.
+ */
+function mergeForecastHistorical(forecast, historical) {
+    var vars = WEIRDTHER_CONFIG.DAILY_VARS.split(",");
+    vars.push("time");
+    var merged = {daily: {}};
+
+    for (var i = 0; i < vars.length; i++) {
+        merged.daily[vars[i]] = forecast.daily[vars[i]] ? forecast.daily[vars[i]].slice() : [];
+    }
+
+    if (historical && historical.daily) {
+        for (var j = 0; j < historical.daily.time.length; j++) {
+            var day = historical.daily.time[j];
+            var offset = merged.daily.time.indexOf(day);
+            if (offset === -1) {
+                merged.daily.time.push(day);
+                for (var k = 0; k < vars.length; k++) {
+                    if (vars[k] !== "time") {
+                        merged.daily[vars[k]].push(historical.daily[vars[k]] ? historical.daily[vars[k]][j] : null);
+                    }
+                }
+            } else {
+                for (var k = 0; k < vars.length; k++) {
+                    if (vars[k] !== "time") {
+                        var histVal = historical.daily[vars[k]] ? historical.daily[vars[k]][j] : null;
+                        if (histVal != null) merged.daily[vars[k]][offset] = histVal;
+                    }
+                }
+            }
+        }
+    }
+
+    /* Sort by date */
+    var combined = [];
+    for (var i = 0; i < merged.daily.time.length; i++) {
+        var obj = {time: merged.daily.time[i]};
+        for (var k = 0; k < vars.length; k++) {
+            if (vars[k] !== "time") obj[vars[k]] = merged.daily[vars[k]][i];
+        }
+        combined.push(obj);
+    }
+    combined.sort(function(a, b) { return a.time < b.time ? -1 : (a.time > b.time ? 1 : 0); });
+    for (var k = 0; k < vars.length; k++) merged.daily[vars[k]] = [];
+    for (var i = 0; i < combined.length; i++) {
+        for (var k = 0; k < vars.length; k++) merged.daily[vars[k]].push(combined[i][vars[k]]);
+    }
+
+    return merged;
 }
