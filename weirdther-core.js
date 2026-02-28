@@ -490,6 +490,43 @@ function weatherCodeToDescription(code) {
     return mapping[code] || "Unknown";
 }
 
+/* ========== UI UTILITIES ========== */
+
+function show(id, text) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = text;
+    el.style.display = text ? "" : "none";
+}
+
+function setupRotation(angle, zoom) {
+    var deg = parseInt(angle, 10);
+    if (isNaN(deg)) return;
+    if (!zoom || zoom <= 0) zoom = 1;
+    var el = document.getElementById("wrapper");
+    if (!el) return;
+    var w = window.innerWidth || document.documentElement.clientWidth || screen.width || 600;
+    var h = window.innerHeight || document.documentElement.clientHeight || screen.height || 800;
+    /* For 90/270 rotation, swap and scale wrapper dimensions */
+    var a = Math.abs(deg % 360);
+    if (a === 90 || a === 270) {
+        var wrapW = Math.round(h / zoom);
+        var wrapH = Math.round(w / zoom);
+        el.style.width = wrapW + "px";
+        el.style.height = wrapH + "px";
+        el.style.position = "absolute";
+        el.style.left = Math.round((w - wrapW) / 2) + "px";
+        el.style.top = Math.round((h - wrapH) / 2) + "px";
+        el.style.overflow = "hidden";
+    }
+    var xf = "rotate(" + deg + "deg)";
+    if (zoom !== 1) xf += " scale(" + zoom + ")";
+    el.style.webkitTransformOrigin = "50% 50%";
+    el.style.webkitTransform = xf;
+    el.style.transformOrigin = "50% 50%";
+    el.style.transform = xf;
+}
+
 /* ========== HTTP ========== */
 
 function httpGet(url, callback) {

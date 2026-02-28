@@ -473,27 +473,6 @@
             }
         }
 
-        function getDefaultUnit() {
-            // check if unit is in localStorage 
-            const storedUnit = localStorage.getItem('unit');
-            if (storedUnit) {
-                return storedUnit;
-            }
-            if (document.getElementById("units") && document.getElementById("units").value) {
-                return document.getElementById("units").value;
-            }
-            const locale = navigator.language || navigator.userLanguage || "-";
-            const country = locale.split('-')[1] || locale;
-            const imperialCountries = ['US', 'LR', 'MM'];
-            const unit = imperialCountries.includes(country.toUpperCase()) ? 'imperial' : 'metric';
-            console.log("Detected locale:", locale, "Country:", country, "Using unit:", unit);
-            return unit;
-        }
-
-        function setDefaultUnit(unit) {
-            localStorage.setItem('unit', unit);
-        }
-
         function switchUnit(unit) {
             // Save the preference
             setDefaultUnit(unit);

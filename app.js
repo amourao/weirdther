@@ -46,11 +46,6 @@ function setDefaultUnit(unit) {
     localStorage.setItem('unit', unit);
 }
 
-function cacheKey(dateStr, lat, lon) {
-    return "historical-" + dateStr + "-" + lat + "-" + lon + ".json";
-}
-
-
 async function start() {
     isWidget = true;
     document.getElementById("date").value = new Date().toISOString().slice(0, 10);
