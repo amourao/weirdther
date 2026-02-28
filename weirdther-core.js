@@ -129,8 +129,8 @@ function parseUrlParams(defaults) {
     for (var i = 0; i < pairs.length; i++) {
         var pair = pairs[i].split("=");
         if (pair.length === 2) {
-            var key = decodeURIComponent(pair[0]);
-            var value = decodeURIComponent(pair[1]);
+            var key = decodeURIComponent(pair[0].replace(/\+/g, "%20")).replace(/\+/g, " ");
+            var value = decodeURIComponent(pair[1].replace(/\+/g, "%20")).replace(/\+/g, " ");
 
             // Map short name to long name if it exists
             var longKey = paramMap[key] || key;

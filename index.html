@@ -170,28 +170,20 @@
         }
 
         function updateDetailedLink(date) {
-            const params = new URLSearchParams();
-            
-            // Get values from the widget data if available
-            if (window.widgetData) {
-                const data = window.widgetData.parameters;
-                
-                if (data.location) params.append('location', data.location);
-                if (data.latitude) params.append('latitude', data.latitude);
-                if (data.longitude) params.append('longitude', data.longitude);
-                
-                if (date) params.append('date', date);
-                else if (data.date) params.append('date', data.date);
-            
-                if (data.delta) params.append('delta', data.delta);
-                if (data.units) params.append('units', data.units);
-                if (data.climate_normal) params.append('climate_normal', data.climate_normal);
-            }
-            
-            // Build URL and update link
-            const detailedUrl = `detailed.html?${params.toString()}`;
+            if (!window.widgetData) return;
+            const data = window.widgetData.parameters;
+
+            var params = {};
+            if (data.location) params.location = data.location;
+            if (data.latitude) params.latitude = data.latitude;
+            if (data.longitude) params.longitude = data.longitude;
+            params.date = date || data.date;
+            if (data.delta) params.delta = data.delta;
+            if (data.units) params.units = data.units;
+            if (data.climate_normal) params.climate_normal = data.climate_normal;
+
             const detailedLink = document.getElementById('detailedLink');
-            detailedLink.href = detailedUrl;
+            detailedLink.href = 'detailed.html' + buildUrlQuery(params);
             detailedLink.style.display = 'inline-block';
         }
 
@@ -505,35 +497,12 @@
         }
 
         window.onload = async function() {
-            // Parse URL parameters (supports both short and long names)
-            const urlParams = parseUrlParams();
-
-            // Get the default unit (from URL, localStorage, or locale detection)
-            const defaultUnit = urlParams.units || getDefaultUnit();
-
-            // Populate form fields from URL parameters or defaults
-            if (urlParams.location) {
-                document.getElementById('location').value = urlParams.location;
-                document.getElementById('locationInput').value = urlParams.location;
-            }
-            if (urlParams.latitude) {
-                document.getElementById('latitude').value = urlParams.latitude;
-            }
-            if (urlParams.longitude) {
-                document.getElementById('longitude').value = urlParams.longitude;
-            }
-
-            // set default parameters for hidden fields
-            document.getElementById('date').value = urlParams.date || document.getElementById('date').innerHTML || new Date().toISOString().split('T')[0];
-            document.getElementById('delta').value = urlParams.delta || document.getElementById('delta').innerHTML || '5';
+            // Set unit default (URL param > localStorage > locale detection) for button state
+            var defaultUnit = (parseUrlParams().units) || getDefaultUnit();
             document.getElementById('units').value = defaultUnit;
-            if (urlParams.climate_normal) {
-                document.getElementById('climate_normal').value = urlParams.climate_normal;
-            }
-
-            // Update button states
             updateUnitButtons();
 
+            // start() handles all URL param parsing and form-field population
             await start();
             initializeWidget();
         };

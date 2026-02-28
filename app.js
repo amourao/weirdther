@@ -49,15 +49,15 @@ function setDefaultUnit(unit) {
 async function start() {
     isWidget = true;
     document.getElementById("date").value = new Date().toISOString().slice(0, 10);
-    // parse GET parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const latitude = urlParams.get('latitude');
-    const longitude = urlParams.get('longitude');
-    const location = urlParams.get('location');
-    const date = urlParams.get('date');
-    const delta = urlParams.get('delta');
-    const units = urlParams.get('units');
-    const climateNormal = urlParams.get('climate_normal');
+    // parse GET parameters (supports both short and long names, handles + and %2B as spaces)
+    const urlParams = parseUrlParams();
+    const latitude = urlParams['latitude'];
+    const longitude = urlParams['longitude'];
+    const location = urlParams['location'];
+    const date = urlParams['date'];
+    const delta = urlParams['delta'];
+    const units = urlParams['units'];
+    const climateNormal = urlParams['climate_normal'];
     
     if (latitude && longitude) {
         document.getElementById("latitude").value = latitude;
@@ -198,45 +198,33 @@ async function getWeather(){
         "results": {}
     }
     // update URL
-    const url = new URL(window.location.href);
-
     const climateNormalIndex = parseInt(document.getElementById("climate_normal").value) || DEFAULT_CLIMATE_NORMALS_INDEX;
 
+    var urlParamsToSet = {};
     if (location == "Using coordinates") {
-        url.searchParams.set('latitude', latitude);
-        url.searchParams.set('longitude', longitude);
+        urlParamsToSet.latitude = latitude;
+        urlParamsToSet.longitude = longitude;
     } else if (location != "Current location") {
-        url.searchParams.set('location', document.getElementById("location").value);
-    } 
-    if (dateString != new Date().toISOString().slice(0, 10))
-        url.searchParams.set('date', dateString);
-    else
-        url.searchParams.delete('date');
-
-    if (delta && delta != DEFAULT_DELTA)
-        url.searchParams.set('delta', delta);
-    else
-        url.searchParams.delete('delta');
-
-    if (units && units != getDefaultUnit())
-        url.searchParams.set('units', units);
-    else
-        url.searchParams.delete('units');
-
-    if (climateNormalIndex && climateNormalIndex != DEFAULT_CLIMATE_NORMALS_INDEX)
-        url.searchParams.set('climate_normal', climateNormalIndex);
-    else
-        url.searchParams.delete('climate_normal');
-
-    shareUrl = url.toString();
-    if (shareUrl != window.location.href) {
-        window.history.pushState({}, url.pathname, url);
+        urlParamsToSet.location = location;
     }
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const isApiCall = urlParams.get('json') == 'true';
+    if (dateString != new Date().toISOString().slice(0, 10))
+        urlParamsToSet.date = dateString;
+    if (delta && delta != DEFAULT_DELTA)
+        urlParamsToSet.delta = delta;
+    if (units && units != getDefaultUnit())
+        urlParamsToSet.units = units;
+    if (climateNormalIndex && climateNormalIndex != DEFAULT_CLIMATE_NORMALS_INDEX)
+        urlParamsToSet.climate_normal = climateNormalIndex;
 
-    SELF_LINK = url;
+    var newSearch = buildUrlQuery(urlParamsToSet);
+    shareUrl = window.location.origin + window.location.pathname + newSearch;
+    if (shareUrl != window.location.href) {
+        window.history.pushState({}, '', window.location.pathname + newSearch);
+    }
+
+    const isApiCall = parseUrlParams()['json'] == 'true';
+
+    SELF_LINK = new URL(window.location.href);
 
     // today or yesterday
     let current = null;

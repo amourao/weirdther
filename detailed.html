@@ -7,36 +7,7 @@
     <script src="weirdther-core.js"></script>
     <script src="app.js"></script>
     <script>
-        window.onload = function() {
-            // Parse URL parameters (supports both short and long names)
-            const urlParams = parseUrlParams();
-
-            // Populate form fields from URL parameters if provided
-            if (urlParams.location) {
-                document.getElementById('location').value = urlParams.location;
-            }
-            if (urlParams.latitude) {
-                document.getElementById('latitude').value = urlParams.latitude;
-            }
-            if (urlParams.longitude) {
-                document.getElementById('longitude').value = urlParams.longitude;
-            }
-            if (urlParams.date) {
-                document.getElementById('date').value = urlParams.date;
-            }
-            if (urlParams.delta) {
-                document.getElementById('delta').value = urlParams.delta;
-            }
-            if (urlParams.units) {
-                document.getElementById('units').value = urlParams.units;
-            }
-            if (urlParams.climate_normal) {
-                document.getElementById('climate_normal').value = urlParams.climate_normal;
-            }
-
-            // Call the original start function
-            start();
-        };
+        window.onload = start;
     </script>
     <style>
         body {
