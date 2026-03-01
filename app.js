@@ -254,11 +254,10 @@ async function getWeather(){
     const start_year = CLIMATE_NORMALS[climateNormalIndex]["start"];
     const end_year = CLIMATE_NORMALS[climateNormalIndex]["end"];
 
-    // Use selected date as center, but fetch wider range to cover all displayed dates
-    // Each displayed day will use its own ±delta window from this wider dataset
-    const rangeInDays = Math.ceil((delta_ends - delta_starts) / (1000 * 60 * 60 * 24));
-    const widerDelta = parseInt(delta) + Math.ceil(rangeInDays / 2);
-    console.log(`Historical data: center=${date.toISOString().split('T')[0]}, widerDelta=${widerDelta} (covers ${delta_starts.toISOString().split('T')[0]} to ${delta_ends.toISOString().split('T')[0]})`);
+    // Use selected date as center, fetch delta + 16-day forecast window around it.
+    // delta_ends is always today+16 which produces an enormous range for historical dates, so compute widerDelta relative to the selected date only.
+    const widerDelta = parseInt(delta) + 16;
+    console.log(`Historical data: center=${date.toISOString().split('T')[0]}, widerDelta=${widerDelta}`);
 
     const historical = await getHistoricalWeather([latitude, longitude], date, widerDelta, start_year, end_year, units, true);
     const historical_grouped = groupAllHistorical(historical);
