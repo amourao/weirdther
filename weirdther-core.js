@@ -655,6 +655,7 @@ function fetchHistoricalYear(lat, lon, date, delta, year, callback) {
     var now = new Date();
     if (startDate > now) { callback(null, null); return; }
     if (endDate > now) endDate = new Date(now.getTime() - 86400000);
+    if (startDate > endDate) { callback(null, null); return; }
 
     /* Check cache for each day in this range */
     if (useCache) {
