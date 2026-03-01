@@ -191,6 +191,8 @@ function computeAllDayScores(forecastDaily, todayIndex, numDays, historicalGroup
             vars: {}
         };
 
+        if (ds.tempMax == null || ds.tempMin == null) continue;
+
         var varScores = [];
         var maxPctile = 0.5;
 
@@ -267,10 +269,23 @@ function buildPageUrl(overrides) {
     return window.location.pathname + qs;
 }
 
+function parseCoords(str) {
+    var m = str.trim().match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+    if (!m) return null;
+    var lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    return {lat: lat, lon: lon};
+}
+
 function goLocation() {
     var inp = document.getElementById("loc-input");
     if (!inp || !inp.value) return;
-    window.location.href = buildPageUrl({"location": inp.value, "latitude": "", "longitude": "", "date": ""});
+    var coords = parseCoords(inp.value);
+    if (coords) {
+        window.location.href = buildPageUrl({"latitude": coords.lat, "longitude": coords.lon, "location": "", "date": ""});
+    } else {
+        window.location.href = buildPageUrl({"location": inp.value, "latitude": "", "longitude": "", "date": ""});
+    }
 }
 
 function formatTime(d) {
@@ -370,6 +385,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
         var isSelectedRow = (ds.date === selectedDate);
         var isActualToday = (ds.date === nowStr);
         var dayLabel = isActualToday ? "Today" : formatDateShort(ds.date);
+
         var rowWxCode = weatherCodes[ds.date];
         var rowIcon = getWeatherIconEink(rowWxCode)
         var link = buildDateLink(ds.date);
@@ -525,6 +541,11 @@ function loadWeather(lat, lon, units, dateStr) {
                         show("error", "No data to display.");
                         return;
                     }
+                    var selectedInScores = scores.some(function(s) { return s.date === dateStr; });
+                    if (!selectedInScores) {
+                        show("error", "No data available for " + dateStr + " (timezone offset).");
+                        return;
+                    }
 
                     renderAll(scores, units, startYear, endYear, hideVars, dateStr, forecastWeatherCodes);
                 }
@@ -541,7 +562,7 @@ var _initDone = false;
 window.onload = function() {
     if (_initDone) return;
     _initDone = true;
-    var params = parseUrlParams({"location": "Lisbon, Portugal"});
+    var params = parseUrlParams({});
     var loc = params["location"] || "";
     var lat = params["latitude"] || "";
     var lon = params["longitude"] || "";
@@ -584,20 +605,48 @@ window.onload = function() {
         show("header", locationName);
         loadWeather(parseFloat(lat), parseFloat(lon), currentUnits, currentDateStr);
     } else if (loc) {
-        show("header", "Loading...");
-        geocode(loc, function(err, gLat, gLon, name) {
-            if (err) {
-                show("loading", "");
-                show("error", "Location not found: " + loc);
-                return;
-            }
-            locationName = name;
-            show("header", name);
-            loadWeather(parseFloat(gLat), parseFloat(gLon), currentUnits, currentDateStr);
-        });
+        var locCoords = parseCoords(loc);
+        if (locCoords) {
+            locationName = loc;
+            show("header", loc);
+            loadWeather(locCoords.lat, locCoords.lon, currentUnits, currentDateStr);
+        } else {
+            show("header", "Loading...");
+            geocode(loc, function(err, gLat, gLon, name) {
+                if (err) {
+                    show("loading", "");
+                    show("error", "Location not found: " + loc);
+                    return;
+                }
+                locationName = name;
+                show("header", name);
+                loadWeather(parseFloat(gLat), parseFloat(gLon), currentUnits, currentDateStr);
+            });
+        }
     } else {
-        show("header", "WEIRDTHER");
-        show("loading", "Add ?location=City to the URL");
+        function loadLisbon() {
+            geocode("Lisbon, Portugal", function(err, gLat, gLon, name) {
+                if (err) { show("error", "Location not found: Lisbon, Portugal"); return; }
+                locationName = name;
+                show("header", name);
+                loadWeather(parseFloat(gLat), parseFloat(gLon), currentUnits, currentDateStr);
+            });
+        }
+        if (navigator.geolocation) {
+            show("header", "Detecting location...");
+            show("loading", "Detecting location...");
+            navigator.geolocation.getCurrentPosition(function(position) {
+                var dLat = position.coords.latitude;
+                var dLon = position.coords.longitude;
+                locationName = dLat.toFixed(2) + ", " + dLon.toFixed(2);
+                show("header", locationName);
+                loadWeather(dLat, dLon, currentUnits, currentDateStr);
+            }, function() {
+                loadLisbon();
+            });
+        } else {
+            loadLisbon();
+        }
     }
 };
 </script>

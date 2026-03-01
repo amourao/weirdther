@@ -236,8 +236,8 @@ async function getWeather(){
     delta_ends.setHours(0, 0, 0, 0);
 
     if (date >= delta_ends) {
-        // too far in the future
         document.getElementById('loading').innerHTML = "Date too far in the future";
+        window.widgetData = null;
         return;
     } else if (date > delta_starts) {
         // delta is in days
@@ -595,6 +595,7 @@ function friendlyStats(data, data_days, current_series, current_series_days, var
 }
 
 function printStats(data, current_value, var_name, current_date, latitude) {
+    if (current_value == null) return "";
     data = data.sort((a, b) => parseFloat(a) - parseFloat(b));
     var mean = getMean(data);
     var std = getStd(data);
@@ -937,6 +938,7 @@ function generateSpan(current_series, current_series_days, historical_stats, his
     }
 
     for (var i = 0; i < current_series.length; i++) {
+        if (current_series[i] == null) continue;
         const percentileData = findPercentileForSpan(data_for_median, current_series[i]);
         const day = current_series_days[i];
         const position = percentileData[0] * 100;

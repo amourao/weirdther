@@ -4,7 +4,7 @@
 
 /* ========== CONFIGURATION ========== */
 var WEIRDTHER_CONFIG = {
-    DAILY_VARS: "weather_code,temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration,daylight_duration",
+    DAILY_VARS: "weather_code,temperature_2m_max,temperature_2m_min,rain_sum,showers_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration,daylight_duration",
     HOURLY_VARS: "temperature_2m,weather_code,relative_humidity_2m,precipitation_probability,rain,showers,snowfall,visibility,cloud_cover,wind_speed_10m,wind_gusts_10m",
     DEFAULT_DELTA: 5,
     HISTORICAL_YEARS: 26,
@@ -98,7 +98,25 @@ var FRIENDLY_NAMES = {
 /* ========== UTILITY FUNCTIONS ========== */
 
 function cacheKey(dateStr, lat, lon) {
-    return "historical-" + dateStr + "-" + lat + "-" + lon + ".json";
+    return dateStr.replace(/-/g, '') + Math.round(parseFloat(lat) * 100) + "|" + Math.round(parseFloat(lon) * 100);
+}
+
+// Decimal places to keep per variable when writing to cache
+var CACHE_VAR_DECIMALS = {
+    "weather_code": 0, "temperature_2m_max": 1, "temperature_2m_min": 1,
+    "rain_sum": 1, "showers_sum": 1, "snowfall_sum": 1, "wind_speed_10m_max": 1,
+    "wind_gusts_10m_max": 1, "wind_direction_10m_dominant": 0,
+    "sunshine_duration": 0, "daylight_duration": 0
+};
+
+function mergeShowersIntoRain(data) {
+    if (!data || !data.daily) return;
+    var rain = data.daily.rain_sum;
+    var showers = data.daily.showers_sum;
+    if (!rain || !showers) return;
+    for (var i = 0; i < rain.length; i++) {
+        rain[i] = +((rain[i] || 0) + (showers[i] || 0)).toFixed(1);
+    }
 }
 
 /**
@@ -611,6 +629,15 @@ var useCache = (function() {
         var t = "__wh_test__";
         localStorage.setItem(t, t);
         localStorage.removeItem(t);
+        // Evict any entry that isn't a cache day (8 leading digits) or "units"
+        var toRemove = [];
+        for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k !== "units" && !/^\d{8}/.test(k)) toRemove.push(k);
+        }
+        for (var j = 0; j < toRemove.length; j++) {
+            try { localStorage.removeItem(toRemove[j]); } catch (e) {}
+        }
         return true;
     } catch (e) {
         return false;
@@ -627,10 +654,14 @@ function clearTodayCache(lat, lon) {
 function fetchForecast(lat, lon, callback) {
     var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&past_days=1&latitude=" + lat +
               "&longitude=" + lon + "&daily=" + WEIRDTHER_CONFIG.DAILY_VARS + ",weather_code&timezone=auto";
-    httpGet(url, callback);
+    httpGet(url, function(err, data) {
+        if (!err && data) mergeShowersIntoRain(data);
+        callback(err, data);
+    });
 }
 
 function fetchHistoricalRange(lat, lon, startDate, endDate, callback) {
+    var varList = WEIRDTHER_CONFIG.DAILY_VARS.split(",");
     var start = new Date(startDate);
     var end = new Date(endDate);
     var now = new Date();
@@ -640,10 +671,66 @@ function fetchHistoricalRange(lat, lon, startDate, endDate, callback) {
     if (toISODate(start) > today) { callback(null, null); return; }
     if (start > end) { callback(null, null); return; }
 
+    /* Check cache for each day in this range */
+    if (useCache) {
+        var allCached = true;
+        var cachedData = {daily: {}};
+        for (var k = 0; k < varList.length; k++) cachedData.daily[varList[k]] = [];
+        cachedData.daily.time = [];
+
+        for (var d = new Date(start.getTime()); d <= end; d.setDate(d.getDate() + 1)) {
+            if (toISODate(d) === today) continue; // today is never cached; forecast covers it
+            var key = cacheKey(toISODate(d), lat, lon);
+            try {
+                var cached = localStorage.getItem(key);
+                if (cached) {
+                    var compact = JSON.parse(cached);
+                    if (Array.isArray(compact) && compact.length === varList.length) {
+                        cachedData.daily.time.push(toISODate(d));
+                        for (var v = 0; v < varList.length; v++) {
+                            cachedData.daily[varList[v]].push(compact[v]);
+                        }
+                        continue;
+                    }
+                }
+            } catch (e) {}
+            allCached = false;
+            break;
+        }
+
+        if (allCached && cachedData.daily.time.length > 0) {
+            callback(null, cachedData);
+            return;
+        }
+    }
+
     var url = "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat + "&longitude=" + lon +
               "&start_date=" + toISODate(start) + "&end_date=" + toISODate(end) +
               "&daily=" + WEIRDTHER_CONFIG.DAILY_VARS + "&timezone=auto";
-    httpGet(url, callback);
+    httpGet(url, function(err, data) {
+        if (err || !data) { callback(err, null); return; }
+        mergeShowersIntoRain(data);
+
+        if (useCache && data.daily && data.daily.time) {
+            try {
+                for (var i = 0; i < data.daily.time.length; i++) {
+                    var day = data.daily.time[i];
+                    var key = cacheKey(day, lat, lon);
+                    var compact = [];
+                    for (var v = 0; v < varList.length; v++) {
+                        var val = data.daily[varList[v]] ? data.daily[varList[v]][i] : null;
+                        var dec = CACHE_VAR_DECIMALS[varList[v]];
+                        compact.push(val === null || val === undefined ? null :
+                            (dec === 0 ? Math.round(val) : +val.toFixed(dec)));
+                    }
+                    localStorage.setItem(key, JSON.stringify(compact));
+                }
+                clearTodayCache(lat, lon);
+            } catch (e) {}
+        }
+
+        callback(null, data);
+    });
 }
 
 function fetchHistoricalYear(lat, lon, date, delta, year, callback) {
@@ -669,11 +756,11 @@ function fetchHistoricalYear(lat, lon, date, delta, year, callback) {
             try {
                 var cached = localStorage.getItem(key);
                 if (cached) {
-                    var dayData = JSON.parse(cached);
-                    if (dayData && dayData.daily && dayData.daily.time && dayData.daily.time.length > 0) {
-                        cachedData.daily.time.push(dayData.daily.time[0]);
+                    var compact = JSON.parse(cached);
+                    if (Array.isArray(compact) && compact.length === varList.length) {
+                        cachedData.daily.time.push(toISODate(d));
                         for (var v = 0; v < varList.length; v++) {
-                            cachedData.daily[varList[v]].push(dayData.daily[varList[v]][0]);
+                            cachedData.daily[varList[v]].push(compact[v]);
                         }
                         continue;
                     }
@@ -695,19 +782,22 @@ function fetchHistoricalYear(lat, lon, date, delta, year, callback) {
         "&daily=" + WEIRDTHER_CONFIG.DAILY_VARS;
     httpGet(url, function(err, data) {
         if (err || !data) { callback(err, null); return; }
+        mergeShowersIntoRain(data);
 
-        /* Cache individual days */
+        /* Cache individual days as compact arrays */
         if (useCache && data.daily && data.daily.time) {
             try {
                 for (var i = 0; i < data.daily.time.length; i++) {
                     var day = data.daily.time[i];
                     var key = cacheKey(day, lat, lon);
-                    var dayData = JSON.parse(JSON.stringify(data));
-                    dayData.daily = {};
-                    for (var varName in data.daily) {
-                        dayData.daily[varName] = [data.daily[varName][i]];
+                    var compact = [];
+                    for (var v = 0; v < varList.length; v++) {
+                        var val = data.daily[varList[v]] ? data.daily[varList[v]][i] : null;
+                        var dec = CACHE_VAR_DECIMALS[varList[v]];
+                        compact.push(val === null || val === undefined ? null :
+                            (dec === 0 ? Math.round(val) : +val.toFixed(dec)));
                     }
-                    localStorage.setItem(key, JSON.stringify(dayData));
+                    localStorage.setItem(key, JSON.stringify(compact));
                 }
                 clearTodayCache(lat, lon);
             } catch (e) {}

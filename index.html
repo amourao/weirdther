@@ -64,6 +64,7 @@
 
             <div class="forecast-section">
                 <div class="section-title">5-Day Forecast</div>
+                <div id="forecastNotice" style="display:none; font-size:0.75em; color:#888; margin-bottom:6px;"></div>
                 <div class="forecast-grid" id="forecastGrid"></div>
             </div>
         </div>
@@ -217,6 +218,13 @@
             const todayData = weatherData.results["Selected day"];
             const futureData = weatherData.results["Days after"];
             const units = weatherData.units || getDefaultUnit();
+
+            function safePercentiles(today, future, key) {
+                const t = today.percentiles[key] ? [today.percentiles[key][0]] : [null];
+                const f = future.percentiles[key] || [];
+                return [...t, ...f];
+            }
+
             // Combine today and future days
             const allDays = {
                 time: [todayData.time[0], ...futureData.time],
@@ -226,19 +234,39 @@
                 wind_speed_10m_max: [todayData.wind_speed_10m_max[0], ...futureData.wind_speed_10m_max],
                 sunshine_duration: [todayData.sunshine_duration[0], ...futureData.sunshine_duration],
                 percentiles: {
-                    temperature_2m_max: [todayData.percentiles.temperature_2m_max[0], ...futureData.percentiles.temperature_2m_max],
-                    temperature_2m_min: [todayData.percentiles.temperature_2m_min[0], ...futureData.percentiles.temperature_2m_min],
-                    rain_sum: [todayData.percentiles.rain_sum[0], ...futureData.percentiles.rain_sum],
-                    wind_speed_10m_max: [todayData.percentiles.wind_speed_10m_max[0], ...futureData.percentiles.wind_speed_10m_max],
-                    sunshine_duration: [todayData.percentiles.sunshine_duration[0], ...futureData.percentiles.sunshine_duration],
-                    snowfall_sum: todayData.percentiles.snowfall_sum ? [todayData.percentiles.snowfall_sum[0], ...(futureData.percentiles.snowfall_sum || [])] : null
+                    temperature_2m_max: safePercentiles(todayData, futureData, 'temperature_2m_max'),
+                    temperature_2m_min: safePercentiles(todayData, futureData, 'temperature_2m_min'),
+                    rain_sum: safePercentiles(todayData, futureData, 'rain_sum'),
+                    wind_speed_10m_max: safePercentiles(todayData, futureData, 'wind_speed_10m_max'),
+                    sunshine_duration: safePercentiles(todayData, futureData, 'sunshine_duration'),
+                    snowfall_sum: (todayData.percentiles.snowfall_sum || futureData.percentiles.snowfall_sum)
+                        ? safePercentiles(todayData, futureData, 'snowfall_sum') : null
                 },
                 weirdther_score: [todayData.weirdther_score[0], ...futureData.weirdther_score],
                 snowfall_sum: todayData.snowfall_sum ? [todayData.snowfall_sum[0], ...(futureData.snowfall_sum || [])] : null,
                 weather_code: todayData.weather_code ? [todayData.weather_code[0], ...(futureData.weather_code || [])] : null
             };
-            
-            forecastGrid.innerHTML = allDays.time.map((date, index) => {
+
+            // Drop days where core values are null (timezone mismatch at boundaries)
+            const skippedDates = [];
+            const validIndices = allDays.time.map((_, i) => i).filter(i => {
+                if (allDays.temperature_2m_max[i] == null || allDays.temperature_2m_min[i] == null) {
+                    skippedDates.push(allDays.time[i]);
+                    return false;
+                }
+                return true;
+            });
+
+            const notice = document.getElementById('forecastNotice');
+            if (skippedDates.length > 0) {
+                notice.textContent = `Note: ${skippedDates.map(formatDate).join(', ')} skipped — no data (timezone offset).`;
+                notice.style.display = 'block';
+            } else {
+                notice.style.display = 'none';
+            }
+
+            forecastGrid.innerHTML = validIndices.map((index) => {
+                const date = allDays.time[index];
                 const tempMax = allDays.temperature_2m_max[index];
                 const tempMin = allDays.temperature_2m_min[index];
                 const rain = allDays.rain_sum[index];
