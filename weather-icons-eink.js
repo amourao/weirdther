@@ -291,6 +291,14 @@ var VAR_ICONS_EINK = (function() {
             '<line x1="4.2" y1="19.8" x2="6.3" y2="17.7"/>' +
             '<line x1="17.7" y1="6.3" x2="19.8" y2="4.2"/>' +
             '</g>'
+        ),
+
+        // Humidity (water drop with % lines inside)
+        "relative_humidity_2m": svg(
+            '<path d="M12 4 Q12 4 7 14 Q5 18 8 21 Q10 23 12 23 Q14 23 16 21 Q19 18 17 14 Z" fill="none" stroke="currentColor" stroke-width="2"/>' +
+            '<line x1="9.5" y1="17.5" x2="14.5" y2="12.5" stroke="currentColor" stroke-width="1.5"/>' +
+            '<circle cx="10.5" cy="16.5" r="1" fill="currentColor"/>' +
+            '<circle cx="13.5" cy="13.5" r="1" fill="currentColor"/>'
         )
     };
 })();

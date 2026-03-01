@@ -652,8 +652,11 @@ function clearTodayCache(lat, lon) {
 /* ========== DATA FETCHING ========== */
 
 function fetchForecast(lat, lon, callback) {
+    var currentVars = "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,relative_humidity_2m";
+    var hourlyVars = "precipitation_probability,precipitation,weather_code,temperature_2m,snowfall,wind_speed_10m,wind_direction_10m";
     var url = "https://api.open-meteo.com/v1/forecast?forecast_days=16&past_days=1&latitude=" + lat +
-              "&longitude=" + lon + "&daily=" + WEIRDTHER_CONFIG.DAILY_VARS + ",weather_code&timezone=auto";
+              "&longitude=" + lon + "&daily=" + WEIRDTHER_CONFIG.DAILY_VARS + ",weather_code" +
+              "&current=" + currentVars + "&hourly=" + hourlyVars + "&timezone=auto";
     httpGet(url, function(err, data) {
         if (!err && data) mergeShowersIntoRain(data);
         callback(err, data);

@@ -33,10 +33,41 @@ table.vars .vi { font-size: 54px; text-align: center; width: 56px; }
 table.vars .pct { color: #333; text-align: right; }
 table.vars .bld td { font-weight: bold; color: white; background: black; }
 table.vars .bld-lo td { font-weight: bold; color: white; background: gray; }
-/* Forecast */
-table.fc { border-collapse: collapse; width: 100%; border: 2px solid black; }
+/* Section labels */
+.section-label { font-size: 26px; font-weight: bold; color: #666; letter-spacing: 2px; text-transform: uppercase; padding: 6px 0 3px; border-bottom: 1px solid #bbb; margin-bottom: 6px; }
+/* Outer card */
+.weather-card { border: 2px solid black; padding: 10px 14px; margin-bottom: 0; }
+/* Hourly timeline */
+table.fc-hourly { border-collapse: collapse; width: 100%; margin-bottom: 0; border: none; border-top: 1px solid #ccc; }
+table.fc-hourly td { text-align: center; padding: 4px 1px; border-left: 1px solid #ccc; font-size: 30px; vertical-align: top; }
+table.fc-hourly td:first-child { border-left: none; }
+.h-icon svg { width: 52px !important; height: 52px !important; }
+.h-past { opacity: 0.3; }
+.h-rain { font-weight: bold; }
+.h-prob { color: #555; }
+.h-wet td { background: #ddd; }
+/* Forecast icon strip */
+table.fc-strip { border-collapse: collapse; width: 100%; margin-bottom: 0; border: none; }
+table.fc-strip td { text-align: center; padding: 6px 4px; border-left: 1px solid #ccc; vertical-align: top; font-size: 40px; }
+table.fc-strip td:first-child { border-left: none; }
+table.fc-strip a { color: black; text-decoration: none; display: block; }
+.strip-day-name { font-size: 34px; font-weight: bold; }
+.strip-icon svg { width: 72px !important; height: 72px !important; }
+.strip-temps { font-size: 34px; white-space: nowrap; }
+.strip-temps .strip-lo { color: #555; }
+.strip-selected { background: #eee; padding-left: 14px !important; padding-right: 14px !important; }
+table.fc-strip .bld { font-weight: bold; color: white; background: black; }
+table.fc-strip .bld-lo { font-weight: bold; color: white; background: gray; }
+table.fc-strip .strip-selected.bld { background: black; }
+table.fc-strip .strip-selected.bld-lo { background: gray; }
+.strip-icon-col { text-align: right; padding-right: 6px !important; border-left: none !important; width: 1px; white-space: nowrap; }
+.strip-icon-col svg { width: 36px !important; height: 36px !important; }
+.strip-w-lbl { font-size: 32px; font-weight: bold; }
+.strip-pct { font-size: 0.55em; color: inherit; }
+/* Forecast table */
+table.fc { border-collapse: collapse; width: 100%; border: none; border-top: 1px solid #ccc; }
 table.fc th, table.fc td { border: none; padding: 5px 7px; text-align: right; font-size: 40px; }
-table.fc th { background: #bbb; color: black; font-size: 36px; }
+table.fc th { background: #ddd; color: black; font-size: 36px; }
 table.fc th:first-child, table.fc td:first-child { width: 1px; white-space: nowrap; padding: 5px 4px; }
 table.fc .day-col { text-align: left; }
 table.fc .icon-col { text-align: center; width: 52px; padding: 4px 2px; }
@@ -134,6 +165,17 @@ function setDefaultUnit(unit) {
 /* ========== UTILITY ========== */
 
 // parseUrlParams is provided by weirdther-core.js
+
+function windArrowSvg(dirDeg, speedKmh) {
+    var norm = Math.pow(Math.min(speedKmh || 0, 80) / 80, 0.6); // power curve — low speeds stay small
+    var size = Math.round(18 + norm * 62);  // 18–80px
+    var sw   = (1.0 + norm * 6.0).toFixed(1); // 1.0–7.0
+    return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none">' +
+        '<g transform="rotate(' + Math.round(dirDeg || 0) + ',12,12)">' +
+        '<line x1="12" y1="21" x2="12" y2="7" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round"/>' +
+        '<polygon points="12,2 7.5,9 16.5,9" fill="currentColor"/>' +
+        '</g></svg>';
+}
 
 function showProgress(message, percent) {
     var el = document.getElementById("loading");
@@ -312,7 +354,7 @@ function fmtVal(varName, value, units) {
     return (value != null ? value.toFixed(1) : "0") + FRIENDLY[varName][units];
 }
 
-function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate, weatherCodes) {
+function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate, weatherCodes, currentWeather, hourlyData) {
     weatherCodes = weatherCodes || {};
     var html = "";
     var nowStr = toISODate(new Date());
@@ -327,10 +369,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
     var isToday = (today.date === nowStr);
     var todayWxCode = weatherCodes[today.date];
     var wxIcon = '<span class="icon-col" title="' + (todayWxCode != null ? weatherCodeToDescription(todayWxCode) : "") + '">' + getWeatherIconEink(todayWxCode) + '</span>' 
-    var label = getScoreLabel(today.weirdther);
     var dateLabel = isToday ? "Today" : formatDateShort(today.date);
-    var hideRain = !!hideVars["rain_sum"];
-    var hideSnow = !!hideVars["snowfall_sum"];
 
     /* ---- Update header: location input left, units+weather right ---- */
     var escapedName = locationName.replace(/"/g, '&quot;');
@@ -338,82 +377,144 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
     var imperialUrl = buildPageUrl({"units": "imperial"});
     var unitC = units === "metric" ? "<b>C</b>" : '<a href="' + metricUrl + '">C</a>';
     var unitF = units === "imperial" ? "<b>F</b>" : '<a href="' + imperialUrl + '">F</a>';
+    var _now = new Date();
+    var _timeStr = (_now.getHours() < 10 ? "0" : "") + _now.getHours() + ":" + (_now.getMinutes() < 10 ? "0" : "") + _now.getMinutes();
     show("header", '<table class="hdr-row"><tr>' +
         '<td><form onsubmit="goLocation();return false;" class="loc-form"><input id="loc-input" class="loc-input" value="' + escapedName + '"><input type="submit" value="Go" class="go-btn"></form></td>' +
-        '<td class="hdr-right">' + unitC + '|' + unitF + ' ' + wxIcon + ' ' + dateLabel + '</td>' +
+        '<td class="hdr-right">' + unitC + '|' + unitF + ' <span class="score-refresh">' + _timeStr + '</span></td>' +
         '</tr></table>');
 
-    /* ---- Vars left, score right ---- */
-    html += '<table class="vars-row"><tr><td>';
+    /* ---- 3-hourly rain timeline for selected day ---- */
+    if (hourlyData) {
+        //html += '<div class="section-label">Hourly</div>';
+        var SLOTS = [0, 3, 6, 9, 12, 15, 18, 21];
+        var nowHour = isToday ? new Date().getHours() : -1;
+        var anySlot = false;
+        var slotRows = [];
+        for (var si = 0; si < SLOTS.length; si++) {
+            var slotH = SLOTS[si];
+            var pad = slotH < 10 ? "0" : "";
+            var timeKey = selectedDate + "T" + pad + slotH + ":00";
+            var hidx = hourlyData.time.indexOf(timeKey);
+            if (hidx === -1) continue;
+            anySlot = true;
+            var hWxCode   = hourlyData.weather_code[hidx];
+            var hProb     = hourlyData.precipitation_probability[hidx] || 0;
+            var hPrecip   = hourlyData.precipitation[hidx] || 0;
+            var hSnow     = hourlyData.snowfall[hidx] || 0;
+            var hTemp     = hourlyData.temperature_2m[hidx];
+            var hWindKmh  = hourlyData.wind_speed_10m ? (hourlyData.wind_speed_10m[hidx] || 0) : 0;
+            var hWindDir  = hourlyData.wind_direction_10m ? (hourlyData.wind_direction_10m[hidx] || 0) : 0;
+            var isPast    = (nowHour >= 0 && slotH < nowHour);
+            var isWet     = hPrecip > 0 || hSnow > 0;
+            var tempStr   = units === "imperial" ? Math.round(hTemp * 9/5 + 32) + "&deg;" : Math.round(hTemp) + "&deg;";
+            var precipStr = "";
+            if (isWet) {
+                if (units === "imperial") {
+                    precipStr = hSnow > 0 ? (hSnow * 0.393701).toFixed(1) + '"' : (hPrecip * 0.0393701).toFixed(2) + '"';
+                } else {
+                    precipStr = hSnow > 0 ? hSnow.toFixed(1) + "cm" : hPrecip.toFixed(1) + "mm";
+                }
+            }
+            var windSpeedDisp = units === "imperial" ? Math.round(hWindKmh * 0.621371) + " mph" : Math.round(hWindKmh) + " km/h";
+            slotRows.push({slotH: slotH, hWxCode: hWxCode, hProb: hProb, tempStr: tempStr, precipStr: precipStr, isWet: isWet, isPast: isPast, hWindKmh: hWindKmh, hWindDir: hWindDir, windSpeedDisp: windSpeedDisp});
+        }
+        if (anySlot || (isToday && currentWeather)) {
+            html += '<table class="fc-hourly"><tr>';
+            /* "Now" cell from current weather when viewing today */
+            if (isToday && currentWeather) {
+                var cw = currentWeather;
+                var cwTempStr = units === "imperial" ? Math.round(cw.temperature_2m * 9/5 + 32) + "&deg;" : Math.round(cw.temperature_2m) + "&deg;";
+                var cwFeelStr = units === "imperial" ? Math.round(cw.apparent_temperature * 9/5 + 32) + "&deg;" : Math.round(cw.apparent_temperature) + "&deg;";
+                var cwPrecip  = cw.precipitation || 0;
+                var cwPrecipStr = "";
+                if (cwPrecip > 0) {
+                    cwPrecipStr = units === "imperial" ? (cwPrecip * 0.0393701).toFixed(2) + '"' : cwPrecip.toFixed(1) + "mm";
+                }
+                var cwWindKmh = cw.wind_speed_10m || 0;
+                var cwWindDir = cw.wind_direction_10m || 0;
+                var cwWindDisp = units === "imperial" ? Math.round(cwWindKmh * 0.621371) + " mph" : Math.round(cwWindKmh) + " km/h";
+                html += '<td>';
+                html += '<div><b>Now</b></div>';
+                html += '<div class="h-icon">' + getWeatherIconEink(cw.weather_code) + '</div>';
+                html += '<div>' + cwTempStr + '</div>';
+                html += '<div class="h-prob">' + cwFeelStr + '</div>';
+                html += '<div class="h-rain">' + (cwPrecipStr || '&nbsp;') + '</div>';
+                html += '<div class="h-wind" title="' + cwWindDisp + '">' + windArrowSvg(cwWindDir, cwWindKmh) + '</div>';
+                html += '</td>';
+            }
+            for (var sr = 0; sr < slotRows.length; sr++) {
+                var row = slotRows[sr];
+                if (isToday && currentWeather && row.isPast) continue;
+                var tdClass = row.isWet ? ' class="h-wet"' : '';
+                html += '<td' + tdClass + '>';
+                html += '<div>' + (row.slotH < 10 ? "0" : "") + row.slotH + 'h</div>';
+                html += '<div class="h-icon">' + getWeatherIconEink(row.hWxCode) + '</div>';
+                html += '<div>' + row.tempStr + '</div>';
+                html += '<div class="h-prob">' + (row.hProb > 0 ? row.hProb + '%' : '&nbsp;') + '</div>';
+                html += '<div class="h-rain">' + (row.precipStr || '&nbsp;') + '</div>';
+                html += '<div class="h-wind" title="' + row.windSpeedDisp + '">' + windArrowSvg(row.hWindDir, row.hWindKmh) + '</div>';
+                html += '</td>';
+            }
+            html += '</tr></table>';
+        }
+    }
 
-    html += '<table class="vars">';
-    for (var v = 0; v < VAR_LIST.length; v++) {
-        var vn = VAR_LIST[v];
-        if (hideVars[vn]) continue;
-        var vi = today.vars[vn];
-        if (!vi) continue;
-        var cls = unusualClass(vi.raw);
-        html += '<tr' + (cls ? ' class="' + cls + '"' : '') + '>';
-        html += '<td class="vi">' + getVarIconEink(vn) + '</td>';
-        html += '<td>' + fmtVal(vn, vi.value, units) + '</td>';
-        html += '<td class="pct">' + pctPretty(vi.raw) + '</td>';
+    /* ---- Forecast grid (bottom): vars as rows, days as columns ---- */
+    //html += '<div class="section-label">Forecast</div>';
+    html += '<table class="fc-strip">';
+
+    /* Row 0: day names + weather icons */
+    html += '<tr><td class="strip-icon-col"></td>';
+    for (var sd = 0; sd < dayScores.length; sd++) {
+        var sds = dayScores[sd];
+        var sLink = buildDateLink(sds.date);
+        var sLabel = (sds.date === nowStr) ? "Today" : formatDateShort(sds.date).split(" ")[0];
+        var selAttr = (sds.date === selectedDate) ? ' class="strip-selected"' : '';
+        html += '<td' + selAttr + '><a href="' + sLink + '">';
+        html += '<div class="strip-day-name">' + sLabel + '</div>';
+        html += '<div class="strip-icon">' + getWeatherIconEink(weatherCodes[sds.date]) + '</div>';
+        html += '</a></td>';
+    }
+    html += '</tr>';
+
+    /* Helper: build class attr for a data cell */
+    function gridCellAttr(isSel, cls) {
+        var c = (isSel ? "strip-selected" : "") + (cls ? (isSel ? " " : "") + cls : "");
+        return c ? ' class="' + c + '"' : "";
+    }
+
+    /* Variable rows */
+    var gridRows = [
+        { icon: getVarIconEink("temperature_2m_max"), fn: function(s) { return Math.round(s.tempMax) + "&deg;"; },  cls: function(s) { return s.vars["temperature_2m_max"] ? unusualClass(s.vars["temperature_2m_max"].raw) : ""; }, pct: function(s) { return s.vars["temperature_2m_max"] ? pctPretty(s.vars["temperature_2m_max"].raw) : ""; } },
+        { icon: getVarIconEink("temperature_2m_min"), fn: function(s) { return Math.round(s.tempMin) + "&deg;"; },  cls: function(s) { return s.vars["temperature_2m_min"] ? unusualClass(s.vars["temperature_2m_min"].raw) : ""; }, pct: function(s) { return s.vars["temperature_2m_min"] ? pctPretty(s.vars["temperature_2m_min"].raw) : ""; } },
+        { icon: getVarIconEink("rain_sum"),           fn: function(s) { return (s.snow > 0 ? s.snow : s.rain).toFixed(1); }, cls: function(s) { var vn = s.snow > 0 ? "snowfall_sum" : "rain_sum"; return s.vars[vn] ? unusualClass(s.vars[vn].raw) : ""; }, pct: function(s) { var vn = s.snow > 0 ? "snowfall_sum" : "rain_sum"; return s.vars[vn] ? pctPretty(s.vars[vn].raw) : ""; } },
+        { icon: getVarIconEink("wind_speed_10m_max"), fn: function(s) { return units === "imperial" ? Math.round(s.wind * 0.621371) : Math.round(s.wind); }, cls: function(s) { return s.vars["wind_speed_10m_max"] ? unusualClass(s.vars["wind_speed_10m_max"].raw) : ""; }, pct: function(s) { return s.vars["wind_speed_10m_max"] ? pctPretty(s.vars["wind_speed_10m_max"].raw) : ""; } },
+        { icon: getVarIconEink("sunshine_duration"),  fn: function(s) { return Math.round(s.sunshinePct); }, cls: function(s) { return s.vars["sunshine_duration"] ? unusualClass(s.vars["sunshine_duration"].raw) : ""; }, pct: function(s) { return s.vars["sunshine_duration"] ? pctPretty(s.vars["sunshine_duration"].raw) : ""; } }
+    ];
+    for (var gr = 0; gr < gridRows.length; gr++) {
+        var row = gridRows[gr];
+        html += '<tr><td class="strip-icon-col">' + row.icon + '</td>';
+        for (var sd = 0; sd < dayScores.length; sd++) {
+            var sds = dayScores[sd];
+            var isSel = sds.date === selectedDate;
+            var cellVal = row.fn(sds) + '<div class="strip-pct">' + row.pct(sds) + '</div>';
+            html += '<td' + gridCellAttr(isSel, row.cls(sds)) + '>' + cellVal + '</td>';
+        }
         html += '</tr>';
     }
-    html += '</table>';
 
-    html += '</td><td class="score-box">';
-    html += '<div class="score-weirdther">WEIRDTHER</div>';
-    if (today.weirdther >= 75) {
-        html += '<div><span class="score-num-inv">' + today.weirdther + '</span></div>';
-    } else {
-        html += '<div class="score-num">' + today.weirdther + '</div>';
+    /* Weirdther score row */
+    html += '<tr><td class="strip-icon-col strip-w-lbl">W</td>';
+    for (var sd = 0; sd < dayScores.length; sd++) {
+        var sds = dayScores[sd];
+        var isSel = sds.date === selectedDate;
+        var wCls = sds.weirdther >= 75 ? "bld" : "";
+        var wVal = sds.weirdther + '<div class="strip-pct">' + getScoreLabel(sds.weirdther) + '</div>';
+        html += '<td' + gridCellAttr(isSel, wCls) + '>' + wVal + '</td>';
     }
-    html += '<div class="score-lbl">' + label + '</div>';
-    // html += '<div class="score-freq">' + genOnceEvery(today.maxPercentile, startYear, endYear) + '</div>';
-    html += '<div class="score-refresh">' + formatTime(new Date()) + '</div>';
-    html += '</td></tr></table>';
+    html += '</tr>';
 
-    /* ---- Forecast table with values, clickable days ---- */
-    html += '<table class="fc">';
-    html += '<tr><th></th><th class="day-col">Day</th><th>' + getVarIconEink("temperature_2m_max") + '</th><th>' + getVarIconEink("temperature_2m_min") + '</th>';
-    if (!hideRain) html += '<th>' + getVarIconEink("rain_sum") + '</th>';
-    if (!hideSnow) html += '<th>' + getVarIconEink("snowfall_sum") + '</th>';
-    html += '<th>' + getVarIconEink("wind_speed_10m_max") + '</th><th>' + getVarIconEink("sunshine_duration") + '</th><th>W</th></tr>';
-
-    for (var d = 0; d < dayScores.length; d++) {
-        var ds = dayScores[d];
-        var isSelectedRow = (ds.date === selectedDate);
-        var isActualToday = (ds.date === nowStr);
-        var dayLabel = isActualToday ? "Today" : formatDateShort(ds.date);
-
-        var rowWxCode = weatherCodes[ds.date];
-        var rowIcon = getWeatherIconEink(rowWxCode)
-        var link = buildDateLink(ds.date);
-
-        var cTempMax = ds.vars["temperature_2m_max"] ? unusualClass(ds.vars["temperature_2m_max"].raw) : "";
-        var cTempMin = ds.vars["temperature_2m_min"] ? unusualClass(ds.vars["temperature_2m_min"].raw) : "";
-        var cWind = ds.vars["wind_speed_10m_max"] ? unusualClass(ds.vars["wind_speed_10m_max"].raw) : "";
-        var cSun = ds.vars["sunshine_duration"] ? unusualClass(ds.vars["sunshine_duration"].raw) : "";
-        var sunPct = Math.round(ds.sunshinePct) + "%";
-
-        html += '<tr' + (isSelectedRow ? ' style="border-top:2px solid #000;border-bottom:2px solid #000"' : '') + '>';
-        html += '<td class="icon-col" title="' + (rowWxCode != null ? weatherCodeToDescription(rowWxCode) : "") + '">' + rowIcon + '</td>';
-        html += '<td class="day-col"><a href="' + link + '"' + (isSelectedRow ? ' style="font-weight:bold"' : '') + '>' + dayLabel + '</a></td>';
-        html += '<td' + (cTempMax ? ' class="' + cTempMax + '"' : '') + '>' + Math.round(ds.tempMax) + '</td>';
-        html += '<td' + (cTempMin ? ' class="' + cTempMin + '"' : '') + '>' + Math.round(ds.tempMin) + '</td>';
-        if (!hideRain) {
-            var cRain = ds.vars["rain_sum"] ? unusualClass(ds.vars["rain_sum"].raw) : "";
-            html += '<td' + (cRain ? ' class="' + cRain + '"' : '') + '>' + ds.rain.toFixed(1) + '</td>';
-        }
-        if (!hideSnow) {
-            var cSnow = ds.vars["snowfall_sum"] ? unusualClass(ds.vars["snowfall_sum"].raw) : "";
-            html += '<td' + (cSnow ? ' class="' + cSnow + '"' : '') + '>' + ds.snow.toFixed(1) + '</td>';
-        }
-        html += '<td' + (cWind ? ' class="' + cWind + '"' : '') + '>' + Math.round(ds.wind) + '</td>';
-        html += '<td' + (cSun ? ' class="' + cSun + '"' : '') + '>' + sunPct + '</td>';
-        html += '<td' + (ds.weirdther >= 75 ? ' class="bld"' : '') + '>' + ds.weirdther + '</td>';
-        html += '</tr>';
-    }
     html += '</table>';
 
     show("results", html);
@@ -441,6 +542,9 @@ function loadWeather(lat, lon, units, dateStr) {
             show("error", "Error loading forecast: " + (err || "no data"));
             return;
         }
+
+        var forecastCurrent = (forecast.current && forecast.current.temperature_2m != null) ? forecast.current : null;
+        var forecastHourly = (forecast.hourly && forecast.hourly.time) ? forecast.hourly : null;
 
         showProgress("Loading current weather...", 10);
 
@@ -547,7 +651,7 @@ function loadWeather(lat, lon, units, dateStr) {
                         return;
                     }
 
-                    renderAll(scores, units, startYear, endYear, hideVars, dateStr, forecastWeatherCodes);
+                    renderAll(scores, units, startYear, endYear, hideVars, dateStr, forecastWeatherCodes, forecastCurrent, forecastHourly);
                 }
             );
         });
