@@ -161,7 +161,6 @@ function setDefaultUnit(unit) {
     } catch (e) {}
 }
 
-
 /* ========== UTILITY ========== */
 
 // parseUrlParams is provided by weirdther-core.js
@@ -198,8 +197,8 @@ function formatDateShort(dateStr) {
 
 /* ========== API ========== */
 
-/* fetchForecast, fetchHistoricalRange, fetchHistoricalYear, fetchAllHistorical,
-   mergeForecastHistorical are provided by weirdther-core.js */
+/* fetchForecast, fetchForecastCached, fetchHistoricalRange, fetchHistoricalYear, fetchAllHistorical,
+   mergeForecastHistorical, getForecastSlot, getCachedForecast, setCachedForecast are provided by weirdther-core.js */
 
 /* ========== DATA PROCESSING ========== */
 
@@ -536,7 +535,7 @@ function loadWeather(lat, lon, units, dateStr) {
     show("results", "");
     show("loading", "Loading forecast...");
 
-    fetchForecast(lat, lon, function(err, forecast) {
+    fetchForecastCached(lat, lon, function(err, forecast) {
         if (err || !forecast || !forecast.daily) {
             show("loading", "");
             show("error", "Error loading forecast: " + (err || "no data"));
@@ -659,7 +658,14 @@ function loadWeather(lat, lon, units, dateStr) {
 }
 
 /* ========== AUTO REFRESH ========== */
-setInterval(function() { window.location.reload(); }, 3600000);
+var _lastForecastSlot = getForecastSlot();
+setInterval(function() {
+    var slot = getForecastSlot();
+    if (slot !== _lastForecastSlot) {
+        _lastForecastSlot = slot;
+        if (currentLat !== null) loadWeather(currentLat, currentLon, currentUnits, currentDateStr);
+    }
+}, 60000);
 
 /* ========== INIT ========== */
 var _initDone = false;

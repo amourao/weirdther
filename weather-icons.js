@@ -225,5 +225,7 @@ const WEATHER_ICONS = (() => {
  * @returns {string} Inline SVG string, or a fallback cloud icon for unknown codes
  */
 function getWeatherIconSVG(code) {
-    return WEATHER_ICONS[code] || WEATHER_ICONS[3]; // fallback to overcast cloud
+    var svg = WEATHER_ICONS[code] || WEATHER_ICONS[3];
+    var desc = weatherCodeToDescription(code);
+    return svg.replace(/(<svg[^>]*>)/, '$1<title>' + desc + '</title>');
 }

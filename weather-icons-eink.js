@@ -224,7 +224,9 @@ var WEATHER_ICONS_EINK = (function() {
  * @returns {string} Inline SVG string
  */
 function getWeatherIconEink(code) {
-    return WEATHER_ICONS_EINK[code] || WEATHER_ICONS_EINK[3];
+    var svg = WEATHER_ICONS_EINK[code] || WEATHER_ICONS_EINK[3];
+    var desc = weatherCodeToDescription(code);
+    return svg.replace(/(<svg[^>]*>)/, '$1<title>' + desc + '</title>');
 }
 
 // Variable icons for the current conditions breakdown table
@@ -308,6 +310,19 @@ var VAR_ICONS_EINK = (function() {
  * @param {string} varName - Variable name (e.g. "temperature_2m_max")
  * @returns {string} Inline SVG string
  */
+var VAR_ICON_TITLES_EINK = {
+    "temperature_2m_max":  "Max temperature",
+    "temperature_2m_min":  "Min temperature",
+    "rain_sum":            "Rain",
+    "snowfall_sum":        "Snowfall",
+    "wind_speed_10m_max":  "Max wind speed",
+    "sunshine_duration":   "Sunshine",
+    "relative_humidity_2m": "Humidity"
+};
+
 function getVarIconEink(varName) {
-    return VAR_ICONS_EINK[varName] || '';
+    var svg = VAR_ICONS_EINK[varName] || '';
+    if (!svg) return '';
+    var title = VAR_ICON_TITLES_EINK[varName] || varName;
+    return svg.replace(/(<svg[^>]*>)/, '$1<title>' + title + '</title>');
 }

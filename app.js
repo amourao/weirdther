@@ -609,23 +609,21 @@ function printStats(data, current_value, var_name, current_date, latitude) {
 }
 
 async function getCurrentWeather(location = DEFAULT_LOCATION, unitsType = "metric") {
-    // format location to three decimal places
-
-    location = [location[0].toFixed(2), location[1].toFixed(2)];
-    const url = `https://api.open-meteo.com/v1/forecast?forecast_days=16&latitude=${location[0]}&longitude=${location[1]}&current=${VARS_TO_GET_HOURLY}&daily=${WEIRDTHER_CONFIG.DAILY_VARS},weather_code&timezone=auto`;
-    console.log("Fetching current weather from: " + url);
-    const response = await fetch(url);
-    const data = await response.json();
-
-    console.log("Current weather data:", data);
-    if (unitsType === "imperial") {
-        data["current"] = convertToImperial(data["current"]);
-        data["daily"] = convertToImperial(data["daily"]);
-    }
-    convertSunshineToPct(data["current"]);
-    convertSunshineToPct(data["daily"]);
-
-    return data;
+    location = [parseFloat(location[0]).toFixed(2), parseFloat(location[1]).toFixed(2)];
+    return new Promise(function(resolve, reject) {
+        fetchForecastCached(location[0], location[1], function(err, rawData) {
+            if (err || !rawData) { reject(err || 'No data'); return; }
+            // Deep clone so unit conversion does not mutate cached data
+            var data = JSON.parse(JSON.stringify(rawData));
+            if (unitsType === "imperial") {
+                if (data.current) convertToImperial(data.current);
+                convertToImperial(data.daily);
+            }
+            if (data.current) convertSunshineToPct(data.current);
+            convertSunshineToPct(data.daily);
+            resolve(data);
+        });
+    });
 }
 
 function splitPastPresentFuture(data, current_date, delta = DEFAULT_DELTA) {

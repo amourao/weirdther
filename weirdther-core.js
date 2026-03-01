@@ -570,6 +570,19 @@ function httpGet(url, callback) {
 }
 
 function geocode(location, callback) {
+    var cacheKey = 'geo_' + location.trim().toLowerCase();
+    if (useCache) {
+        try {
+            var cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                var entry = JSON.parse(cached);
+                if (entry && entry.lat && entry.lon && entry.name) {
+                    callback(null, entry.lat, entry.lon, entry.name);
+                    return;
+                }
+            }
+        } catch (e) {}
+    }
     var url = "https://geocoding-api.open-meteo.com/v1/search?name=" +
               encodeURIComponent(location) + "&count=10&format=json";
     httpGet(url, function(err, data) {
@@ -580,7 +593,12 @@ function geocode(location, callback) {
         var name = r.name;
         if (r.admin1) name += ", " + r.admin1;
         if (r.country) name += ", " + r.country;
-        callback(null, parseFloat(r.latitude).toFixed(2), parseFloat(r.longitude).toFixed(2), name);
+        var lat = parseFloat(r.latitude).toFixed(2);
+        var lon = parseFloat(r.longitude).toFixed(2);
+        if (useCache) {
+            try { localStorage.setItem(cacheKey, JSON.stringify({lat: lat, lon: lon, name: name})); } catch (e) {}
+        }
+        callback(null, lat, lon, name);
     });
 }
 
@@ -633,7 +651,7 @@ var useCache = (function() {
         var toRemove = [];
         for (var i = 0; i < localStorage.length; i++) {
             var k = localStorage.key(i);
-            if (k && k !== "units" && !/^\d{8}/.test(k)) toRemove.push(k);
+            if (k && k !== "units" && !/^\d{8}/.test(k) && !/^fc_/.test(k) && !/^geo_/.test(k)) toRemove.push(k);
         }
         for (var j = 0; j < toRemove.length; j++) {
             try { localStorage.removeItem(toRemove[j]); } catch (e) {}
@@ -649,6 +667,37 @@ function clearTodayCache(lat, lon) {
     try { localStorage.removeItem(cacheKey(toISODate(new Date()), lat, lon)); } catch (e) {}
 }
 
+function getForecastSlot() {
+    var d = new Date();
+    var slot = Math.floor(d.getMinutes() / 15) * 15;
+    return d.getFullYear() + '-' + (d.getMonth() < 9 ? '0' : '') + (d.getMonth() + 1) + '-' +
+           (d.getDate() < 10 ? '0' : '') + d.getDate() + 'T' +
+           (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' +
+           (slot < 10 ? '0' : '') + slot;
+}
+
+function getForecastCacheKey(lat, lon) {
+    return 'fc_' + parseFloat(lat).toFixed(2) + '_' + parseFloat(lon).toFixed(2);
+}
+
+function getCachedForecast(lat, lon) {
+    if (!useCache) return null;
+    try {
+        var raw = localStorage.getItem(getForecastCacheKey(lat, lon));
+        if (!raw) return null;
+        var entry = JSON.parse(raw);
+        if (entry && entry.slot === getForecastSlot()) return entry.data;
+    } catch (e) {}
+    return null;
+}
+
+function setCachedForecast(lat, lon, data) {
+    if (!useCache) return;
+    try {
+        localStorage.setItem(getForecastCacheKey(lat, lon), JSON.stringify({slot: getForecastSlot(), data: data}));
+    } catch (e) {}
+}
+
 /* ========== DATA FETCHING ========== */
 
 function fetchForecast(lat, lon, callback) {
@@ -659,6 +708,15 @@ function fetchForecast(lat, lon, callback) {
               "&current=" + currentVars + "&hourly=" + hourlyVars + "&timezone=auto";
     httpGet(url, function(err, data) {
         if (!err && data) mergeShowersIntoRain(data);
+        callback(err, data);
+    });
+}
+
+function fetchForecastCached(lat, lon, callback) {
+    var cached = getCachedForecast(lat, lon);
+    if (cached) { callback(null, cached); return; }
+    fetchForecast(lat, lon, function(err, data) {
+        if (!err && data) setCachedForecast(lat, lon, data);
         callback(err, data);
     });
 }

@@ -534,6 +534,16 @@
             await start();
             initializeWidget();
         };
+
+        // Auto-refresh when forecast slot changes (every 15 min at :00, :15, :30, :45)
+        var _lastForecastSlot = getForecastSlot();
+        setInterval(function() {
+            var slot = getForecastSlot();
+            if (slot !== _lastForecastSlot) {
+                _lastForecastSlot = slot;
+                getWeather();
+            }
+        }, 60000);
     </script>
 </body>
 </html>
