@@ -51,6 +51,7 @@ table.fc-strip { border-collapse: collapse; width: 100%; margin-bottom: 0; borde
 table.fc-strip td { text-align: center; padding: 6px 4px; border-left: 1px solid #ccc; vertical-align: top; font-size: 40px; }
 table.fc-strip td:first-child { border-left: none; }
 table.fc-strip a { color: black; text-decoration: none; display: block; }
+table.fc-strip .bld a, table.fc-strip .bld-lo a { color: inherit; }
 .strip-day-name { font-size: 34px; font-weight: bold; }
 .strip-icon svg { width: 72px !important; height: 72px !important; }
 .strip-temps { font-size: 34px; white-space: nowrap; }
@@ -80,6 +81,7 @@ table.fc a { color: black; text-decoration: underline; }
 .loc-input { width: calc(100% - 80px); font-size: 36px; border: 1px solid gray; padding: 2px 6px; -webkit-box-sizing: border-box; box-sizing: border-box; vertical-align: top; }
 .go-btn { width: 70px; font-size: 36px; border: 1px solid gray; padding: 2px 8px; vertical-align: top; margin-left: -4px; }
 .score-refresh { font-size: 36px; color: #555; }
+.unit-toggle { font-size: 36px; border: 1px solid gray; padding: 2px 10px; background: white; cursor: pointer; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -134,6 +136,7 @@ var currentLon = null;
 var currentUnits = "metric";
 var currentDateStr = "";
 var locationName = "";
+var locationQuery = "";
 
 /* ========== CACHE ========== */
 
@@ -371,16 +374,14 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
     var dateLabel = isToday ? "Today" : formatDateShort(today.date);
 
     /* ---- Update header: location input left, units+weather right ---- */
-    var escapedName = locationName.replace(/"/g, '&quot;');
-    var metricUrl = buildPageUrl({"units": "metric"});
-    var imperialUrl = buildPageUrl({"units": "imperial"});
-    var unitC = units === "metric" ? "<b>C</b>" : '<a href="' + metricUrl + '">C</a>';
-    var unitF = units === "imperial" ? "<b>F</b>" : '<a href="' + imperialUrl + '">F</a>';
+    var escapedName = locationQuery.replace(/"/g, '&quot;');
+    var toggleTarget = units === "metric" ? buildPageUrl({"units": "imperial"}) : buildPageUrl({"units": "metric"});
+    var toggleLabel = units === "metric" ? "use &deg;F" : "use &deg;C";
     var _now = new Date();
     var _timeStr = (_now.getHours() < 10 ? "0" : "") + _now.getHours() + ":" + (_now.getMinutes() < 10 ? "0" : "") + _now.getMinutes();
     show("header", '<table class="hdr-row"><tr>' +
         '<td><form onsubmit="goLocation();return false;" class="loc-form"><input id="loc-input" class="loc-input" value="' + escapedName + '"><input type="submit" value="Go" class="go-btn"></form></td>' +
-        '<td class="hdr-right">' + unitC + '|' + unitF + ' <span class="score-refresh">' + _timeStr + '</span></td>' +
+        '<td class="hdr-right"><a href="' + toggleTarget + '"><button class="unit-toggle">' + toggleLabel + '</button></a> <span class="score-refresh">' + _timeStr + '</span></td>' +
         '</tr></table>');
 
     /* ---- 3-hourly rain timeline for selected day ---- */
@@ -497,7 +498,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
         for (var sd = 0; sd < dayScores.length; sd++) {
             var sds = dayScores[sd];
             var isSel = sds.date === selectedDate;
-            var cellVal = row.fn(sds) + '<div class="strip-pct">' + row.pct(sds) + '</div>';
+            var cellVal = '<a href="' + buildDateLink(sds.date) + '">' + row.fn(sds) + '<div class="strip-pct">' + row.pct(sds) + '</div></a>';
             html += '<td' + gridCellAttr(isSel, row.cls(sds)) + '>' + cellVal + '</td>';
         }
         html += '</tr>';
@@ -509,7 +510,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
         var sds = dayScores[sd];
         var isSel = sds.date === selectedDate;
         var wCls = sds.weirdther >= 75 ? "bld" : "";
-        var wVal = sds.weirdther + '<div class="strip-pct">' + getScoreLabel(sds.weirdther) + '</div>';
+        var wVal = '<a href="' + buildDateLink(sds.date) + '">' + sds.weirdther + '<div class="strip-pct">' + getScoreLabel(sds.weirdther) + '</div></a>';
         html += '<td' + gridCellAttr(isSel, wCls) + '>' + wVal + '</td>';
     }
     html += '</tr>';
@@ -712,15 +713,18 @@ window.onload = function() {
 
     if (lat && lon) {
         locationName = loc || lat + ", " + lon;
+        locationQuery = locationName;
         show("header", locationName);
         loadWeather(parseFloat(lat), parseFloat(lon), currentUnits, currentDateStr);
     } else if (loc) {
         var locCoords = parseCoords(loc);
         if (locCoords) {
             locationName = loc;
+            locationQuery = loc;
             show("header", loc);
             loadWeather(locCoords.lat, locCoords.lon, currentUnits, currentDateStr);
         } else {
+            locationQuery = loc;
             show("header", "Loading...");
             geocode(loc, function(err, gLat, gLon, name) {
                 if (err) {
@@ -738,6 +742,7 @@ window.onload = function() {
             geocode("Lisbon, Portugal", function(err, gLat, gLon, name) {
                 if (err) { show("error", "Location not found: Lisbon, Portugal"); return; }
                 locationName = name;
+                locationQuery = name;
                 show("header", name);
                 loadWeather(parseFloat(gLat), parseFloat(gLon), currentUnits, currentDateStr);
             });
@@ -749,6 +754,7 @@ window.onload = function() {
                 var dLat = position.coords.latitude;
                 var dLon = position.coords.longitude;
                 locationName = dLat.toFixed(2) + ", " + dLon.toFixed(2);
+                locationQuery = locationName;
                 show("header", locationName);
                 loadWeather(dLat, dLon, currentUnits, currentDateStr);
             }, function() {
