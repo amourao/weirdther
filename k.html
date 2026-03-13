@@ -501,21 +501,29 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
             if (isToday && currentWeather) {
                 var cw = currentWeather;
                 var cwTempStr = units === "imperial" ? Math.round(cw.temperature_2m * 9/5 + 32) + "&deg;" : Math.round(cw.temperature_2m) + "&deg;";
-                var cwFeelStr = units === "imperial" ? Math.round(cw.apparent_temperature * 9/5 + 32) + "&deg;" : Math.round(cw.apparent_temperature) + "&deg;";
-                var cwPrecip  = cw.precipitation || 0;
-                var cwPrecipStr = "";
-                if (cwPrecip > 0) {
-                    cwPrecipStr = units === "imperial" ? (cwPrecip * 0.0393701).toFixed(2) + '"' : cwPrecip.toFixed(1) + "mm";
-                }
+                var cwPrecip = cw.precipitation || 0;
                 var cwWindKmh = cw.wind_speed_10m || 0;
                 var cwWindDir = cw.wind_direction_10m || 0;
                 var cwWindDisp = units === "imperial" ? Math.round(cwWindKmh * 0.621371) + " mph" : Math.round(cwWindKmh) + " km/h";
+                // Look up current hour in hourly data for probability and snowfall
+                var _cwNow = new Date();
+                var _cwHour = _cwNow.getHours();
+                var _cwTimeKey = toISODate(_cwNow) + "T" + (_cwHour < 10 ? "0" : "") + _cwHour + ":00";
+                var _cwHidx = hourlyData ? hourlyData.time.indexOf(_cwTimeKey) : -1;
+                var cwProb = _cwHidx !== -1 ? (hourlyData.precipitation_probability[_cwHidx] || 0) : 0;
+                var cwSnow = _cwHidx !== -1 ? (hourlyData.snowfall[_cwHidx] || 0) : 0;
+                var cwPrecipStr = "";
+                if (cwPrecip > 0 || cwSnow > 0) {
+                    cwPrecipStr = units === "imperial"
+                        ? (cwSnow > 0 ? (cwSnow * 0.393701).toFixed(1) + '"' : (cwPrecip * 0.0393701).toFixed(2) + '"')
+                        : (cwSnow > 0 ? cwSnow.toFixed(1) + "cm" : cwPrecip.toFixed(1) + "mm");
+                }
                 html += '<td>';
                 html += '<div><b>Now</b></div>';
                 html += '<div class="h-icon">' + getWeatherIconEink(cw.weather_code) + '</div>';
                 html += '<div>' + cwTempStr + '</div>';
-                html += '<div class="h-prob">' + cwFeelStr + '</div>';
-                html += '<div class="h-rain" title="' + (cwPrecipStr || '') + '">' + rainDropSvg(cwPrecip, 0) + '</div>';
+                html += '<div class="h-prob">' + (cwProb > 0 ? cwProb + '%' : '&nbsp;') + '</div>';
+                html += '<div class="h-rain" title="' + (cwPrecipStr || '') + '">' + rainDropSvg(cwPrecip, cwSnow) + '</div>';
                 html += '<div class="h-wind" title="' + cwWindDisp + '">' + windArrowSvg(cwWindDir, cwWindKmh) + '</div>';
                 html += '</td>';
             }
