@@ -596,7 +596,7 @@ function geocode(location, callback) {
         var lat = parseFloat(r.latitude).toFixed(2);
         var lon = parseFloat(r.longitude).toFixed(2);
         if (useCache) {
-            try { localStorage.setItem(cacheKey, JSON.stringify({lat: lat, lon: lon, name: name})); } catch (e) {}
+            safeLocalStorageSet(cacheKey, JSON.stringify({lat: lat, lon: lon, name: name}), lat, lon);
         }
         callback(null, lat, lon, name);
     });
@@ -667,6 +667,63 @@ function clearTodayCache(lat, lon) {
     try { localStorage.removeItem(cacheKey(toISODate(new Date()), lat, lon)); } catch (e) {}
 }
 
+function evictCache(lat, lon) {
+    if (!useCache) return;
+    var locCode = (lat != null && lon != null)
+        ? String(Math.round(parseFloat(lat) * 100)) + "|" + String(Math.round(parseFloat(lon) * 100))
+        : null;
+    var fcKey = (lat != null && lon != null) ? getForecastCacheKey(lat, lon) : null;
+
+    var allKeys = [];
+    for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k) allKeys.push(k);
+    }
+
+    var otherHistorical = [];
+    var currentHistorical = [];
+    for (var i = 0; i < allKeys.length; i++) {
+        var k = allKeys[i];
+        if (/^\d{8}/.test(k)) {
+            if (locCode && k.indexOf(locCode) === 8) {
+                currentHistorical.push(k);
+            } else {
+                otherHistorical.push(k);
+            }
+        } else if (/^fc_/.test(k) && k !== fcKey) {
+            try { localStorage.removeItem(k); } catch (e) {}
+        } else if (/^geo_/.test(k)) {
+            try { localStorage.removeItem(k); } catch (e) {}
+        }
+    }
+
+    // Remove all other-location historical data first (oldest dates first)
+    otherHistorical.sort();
+    for (var j = 0; j < otherHistorical.length; j++) {
+        try { localStorage.removeItem(otherHistorical[j]); } catch (e) {}
+    }
+
+    // Then remove oldest 25% of current-location historical data
+    if (currentHistorical.length > 0) {
+        currentHistorical.sort();
+        var toRemove = Math.max(1, Math.ceil(currentHistorical.length * 0.25));
+        for (var m = 0; m < toRemove; m++) {
+            try { localStorage.removeItem(currentHistorical[m]); } catch (e) {}
+        }
+    }
+}
+
+function safeLocalStorageSet(key, value, lat, lon) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {
+        try {
+            evictCache(lat, lon);
+            localStorage.setItem(key, value);
+        } catch (e2) {}
+    }
+}
+
 function getForecastSlot() {
     var d = new Date();
     var slot = Math.floor(d.getMinutes() / 15) * 15;
@@ -693,9 +750,7 @@ function getCachedForecast(lat, lon) {
 
 function setCachedForecast(lat, lon, data) {
     if (!useCache) return;
-    try {
-        localStorage.setItem(getForecastCacheKey(lat, lon), JSON.stringify({slot: getForecastSlot(), data: data}));
-    } catch (e) {}
+    safeLocalStorageSet(getForecastCacheKey(lat, lon), JSON.stringify({slot: getForecastSlot(), data: data}), lat, lon);
 }
 
 /* ========== DATA FETCHING ========== */
@@ -773,21 +828,19 @@ function fetchHistoricalRange(lat, lon, startDate, endDate, callback) {
         mergeShowersIntoRain(data);
 
         if (useCache && data.daily && data.daily.time) {
-            try {
-                for (var i = 0; i < data.daily.time.length; i++) {
-                    var day = data.daily.time[i];
-                    var key = cacheKey(day, lat, lon);
-                    var compact = [];
-                    for (var v = 0; v < varList.length; v++) {
-                        var val = data.daily[varList[v]] ? data.daily[varList[v]][i] : null;
-                        var dec = CACHE_VAR_DECIMALS[varList[v]];
-                        compact.push(val === null || val === undefined ? null :
-                            (dec === 0 ? Math.round(val) : +val.toFixed(dec)));
-                    }
-                    localStorage.setItem(key, JSON.stringify(compact));
+            for (var i = 0; i < data.daily.time.length; i++) {
+                var day = data.daily.time[i];
+                var key = cacheKey(day, lat, lon);
+                var compact = [];
+                for (var v = 0; v < varList.length; v++) {
+                    var val = data.daily[varList[v]] ? data.daily[varList[v]][i] : null;
+                    var dec = CACHE_VAR_DECIMALS[varList[v]];
+                    compact.push(val === null || val === undefined ? null :
+                        (dec === 0 ? Math.round(val) : +val.toFixed(dec)));
                 }
-                clearTodayCache(lat, lon);
-            } catch (e) {}
+                safeLocalStorageSet(key, JSON.stringify(compact), lat, lon);
+            }
+            clearTodayCache(lat, lon);
         }
 
         callback(null, data);
@@ -847,21 +900,19 @@ function fetchHistoricalYear(lat, lon, date, delta, year, callback) {
 
         /* Cache individual days as compact arrays */
         if (useCache && data.daily && data.daily.time) {
-            try {
-                for (var i = 0; i < data.daily.time.length; i++) {
-                    var day = data.daily.time[i];
-                    var key = cacheKey(day, lat, lon);
-                    var compact = [];
-                    for (var v = 0; v < varList.length; v++) {
-                        var val = data.daily[varList[v]] ? data.daily[varList[v]][i] : null;
-                        var dec = CACHE_VAR_DECIMALS[varList[v]];
-                        compact.push(val === null || val === undefined ? null :
-                            (dec === 0 ? Math.round(val) : +val.toFixed(dec)));
-                    }
-                    localStorage.setItem(key, JSON.stringify(compact));
+            for (var i = 0; i < data.daily.time.length; i++) {
+                var day = data.daily.time[i];
+                var key = cacheKey(day, lat, lon);
+                var compact = [];
+                for (var v = 0; v < varList.length; v++) {
+                    var val = data.daily[varList[v]] ? data.daily[varList[v]][i] : null;
+                    var dec = CACHE_VAR_DECIMALS[varList[v]];
+                    compact.push(val === null || val === undefined ? null :
+                        (dec === 0 ? Math.round(val) : +val.toFixed(dec)));
                 }
-                clearTodayCache(lat, lon);
-            } catch (e) {}
+                safeLocalStorageSet(key, JSON.stringify(compact), lat, lon);
+            }
+            clearTodayCache(lat, lon);
         }
 
         callback(null, data);
