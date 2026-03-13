@@ -651,7 +651,7 @@ var useCache = (function() {
         var toRemove = [];
         for (var i = 0; i < localStorage.length; i++) {
             var k = localStorage.key(i);
-            if (k && k !== "units" && !/^\d{8}/.test(k) && !/^fc_/.test(k) && !/^geo_/.test(k)) toRemove.push(k);
+            if (k && k !== "units" && !/^\d{8}/.test(k) && !/^fc_/.test(k) && !/^geo_/.test(k) && !/^rn2_/.test(k)) toRemove.push(k);
         }
         for (var j = 0; j < toRemove.length; j++) {
             try { localStorage.removeItem(toRemove[j]); } catch (e) {}

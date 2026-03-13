@@ -476,7 +476,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
 
         for (var si = 0; si < SLOTS.length; si++) {
             var slotH = SLOTS[si];
-            var isPast = (nowHour >= 0 && (slotH + 1) < nowHour);
+            var isPast = (nowHour >= 0 && slotH <= nowHour);
             var row = buildSlot(selectedDate, slotH, isPast, false);
             if (row) slotRows.push(row);
         }
