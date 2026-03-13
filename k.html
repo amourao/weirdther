@@ -39,10 +39,10 @@ table.vars .bld-lo td { font-weight: bold; color: white; background: gray; }
 .weather-card { border: 2px solid black; padding: 10px 14px; margin-bottom: 0; }
 /* Hourly timeline */
 table.fc-hourly { border-collapse: collapse; width: 100%; margin-bottom: 0; border: none; border-top: 1px solid #ccc; }
-table.fc-hourly td { text-align: center; padding: 4px 1px; border-left: 1px solid #ccc; font-size: 30px; vertical-align: top; }
+table.fc-hourly td { text-align: center; padding: 4px 1px; border-left: 1px solid #ccc; font-size: 34px; vertical-align: top; }
 table.fc-hourly td:first-child { border-left: none; }
 .h-icon { color: #888; }
-.h-icon svg { width: 52px !important; height: 52px !important; }
+.h-icon svg { width: 58px !important; height: 58px !important; }
 .h-past { opacity: 0.3; }
 .h-rain { font-weight: bold; }
 .h-prob { color: #555; }
@@ -50,12 +50,12 @@ table.fc-hourly td:first-child { border-left: none; }
 .h-nextday { border-top: 2px dashed #aaa; }
 /* Forecast icon strip */
 table.fc-strip { border-collapse: collapse; width: 100%; margin-bottom: 0; border: none; }
-table.fc-strip td { text-align: center; padding: 6px 4px; border-left: 1px solid #ccc; vertical-align: top; font-size: 40px; }
+table.fc-strip td { text-align: center; padding: 6px 4px; border-left: 1px solid #ccc; vertical-align: top; font-size: 36px; }
 table.fc-strip td:first-child { border-left: none; }
 table.fc-strip a { color: black; text-decoration: none; display: block; }
 table.fc-strip .bld a, table.fc-strip .bld-lo a { color: inherit; }
-.strip-day-name { font-size: 34px; font-weight: bold; }
-.strip-icon svg { width: 72px !important; height: 72px !important; }
+.strip-day-name { font-size: 30px; font-weight: bold; }
+.strip-icon svg { width: 64px !important; height: 64px !important; }
 .strip-temps { font-size: 34px; white-space: nowrap; }
 .strip-temps .strip-lo { color: #555; }
 .strip-selected { background: #eee; padding-left: 14px !important; padding-right: 14px !important; }
@@ -65,7 +65,7 @@ table.fc-strip .strip-selected.bld { background: black; }
 table.fc-strip .strip-selected.bld-lo { background: gray; }
 .strip-icon-col { text-align: right; padding-right: 6px !important; border-left: none !important; width: 1px; white-space: nowrap; }
 .strip-icon-col svg { width: 36px !important; height: 36px !important; }
-.strip-w-lbl { font-size: 32px; font-weight: bold; }
+.strip-w-lbl { font-size: 28px; font-weight: bold; }
 .strip-pct { font-size: 0.55em; color: inherit; }
 /* Forecast table */
 table.fc { border-collapse: collapse; width: 100%; border: none; border-top: 1px solid #ccc; }
@@ -548,7 +548,7 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
     }
 
     /* ---- Forecast grid (bottom): vars as rows, days as columns ---- */
-    //html += '<div class="section-label">Forecast</div>';
+    html += '<hr style="border: none; border-top: 1px solid #bbb; margin: 8px 0;">';
     html += '<table class="fc-strip">';
 
     /* Row 0: day names + weather icons */
