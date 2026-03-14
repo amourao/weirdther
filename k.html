@@ -483,10 +483,11 @@ function renderAll(dayScores, units, startYear, endYear, hideVars, selectedDate,
 
         // For today: fill up to 7 visible slots by rolling into the next day (+ 1 "Now" cell = 8 total)
         if (isToday) {
-            var visibleCount = slotRows.filter(function(r) { return !r.isPast; }).length;
+            var visibleCount = 0;
+            for (var vi = 0; vi < slotRows.length; vi++) { if (!slotRows[vi].isPast) visibleCount++; }
             if (visibleCount < 7) {
-                var nextDate = new Date(selectedDate + "T12:00:00");
-                nextDate.setDate(nextDate.getDate() + 1);
+                var _ndParts = selectedDate.split("-");
+                var nextDate = new Date(parseInt(_ndParts[0]), parseInt(_ndParts[1]) - 1, parseInt(_ndParts[2]) + 1);
                 var nextDateStr = toISODate(nextDate);
                 var needed = 7 - visibleCount;
                 for (var nsi = 0; nsi < SLOTS.length && needed > 0; nsi++) {
