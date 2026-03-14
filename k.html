@@ -627,6 +627,7 @@ function loadWeather(lat, lon, units, dateStr) {
     fetchForecastCached(lat, lon, function(err, forecast) {
         if (err || !forecast || !forecast.daily) {
             show("loading", "");
+            if (err === "HTTP error 0") { _pendingRefresh = true; return; }
             show("error", "Error loading forecast: " + (err || "no data"));
             return;
         }
@@ -754,21 +755,13 @@ function _doRefresh() {
 }
 setInterval(function() {
     var slot = getForecastSlot();
-    if (slot !== _lastForecastSlot) {
+    if (slot !== _lastForecastSlot || _pendingRefresh) {
         _lastForecastSlot = slot;
-        if (navigator.onLine !== false) {
-            _doRefresh();
-        } else {
-            _pendingRefresh = true;
-        }
-    }
-}, 60000);
-window.ononline = function() {
-    if (_pendingRefresh) {
         _pendingRefresh = false;
         _doRefresh();
     }
-};
+}, 60000);
+window.ononline = function() { _pendingRefresh = false; _doRefresh(); };
 
 /* ========== INIT ========== */
 var _initDone = false;
